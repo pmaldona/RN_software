@@ -1,4 +1,8 @@
 
+source("rn.R")
+source("rg.R")
+
+# generates random networks of L reactions according to s model
 sm.genrn <- function(L=12,s=1) {
   lr <<- switch(s,
                 rg.lreac(L=L,U=L,g=rg.genreac(dCM=rg.dCM(C=1:2,M=1))), # (1) unbalanced
@@ -16,15 +20,19 @@ sm.genrn <- function(L=12,s=1) {
   rn <<- ucn$rn()
 }
 
-# simulates a reaction network rn for n iterations at dt time step with initial state s0 (infused up to time t0)
-# mass action parameter p, minimum activation threshold e and maximum species cardinality w
-sm.sim <- function(rn,n=1000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=0,p=runif(ncol(rn$mr),.9,1.1),e=1e-3, w=1e2) {
-  s <- matrix(0,nrow(rn$mr),n); s[,1] <- pmax(0,s0) # state matrix (one column vector per iteration)
+# Euler method simulation of a reaction network rn for n iterations at dt time step (adaptative)
+# with initial state s0 (infused up to time t0), mass action parameter p (vector, one component per reaction),
+# minimum activation threshold e (vector: low, high) and maximum species concentration w
+sm.sim <- function(rn,n=2000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=0,p=runif(ncol(rn$mr),.9,1.1),e=1e-3*c(1,10), w=1e2) {
+  s <- matrix(0,nrow(rn$mr),n)  # state matrix (species concentration, one column vector per iteration)
   if (!is.null(rn$sid)) row.names(s) <- rn$sid else row.names(s) <- paste0("s",1:nrow(rn$mr))
-  v <- matrix(0,ncol(rn$mr),n) # process matrix (one column vector per iteration)
+  v <- matrix(0,ncol(rn$mr),n) # process matrix (reactions activity, one column vector per iteration)
   row.names(v) <- paste0("r",1:ncol(rn$mr))
   t <- rep(0,n) # time
   m <- rn$mp - rn$mr
+  if (length(e)<2) e <- c(e,e)
+  if (t0<=0) s[,1] <- pmax(0,s0)
+  cs <- logical(nrow(rn$mr)) # current state (species available)
   for (i in 1:n) {
     if (i>1) {
       ds <- m %*% v[,i-1,drop=F] # change of concentrations per time unit
@@ -33,20 +41,29 @@ sm.sim <- function(rn,n=1000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=0,p=runif(nco
       t[i] <- t[i-1] + f*dt
       s[,i] <- pmin(pmax(0,s[,i-1]+f*ds*dt),w)
     }
-    k.s <- which(s[,i]>e) # available species
-    k.r <- which(rbind(s[,i]<=e) %*% rn$mr == 0) # reactions with all reactants available
+    cs[s[,i]>e[2]] <- T # species over high threshold are available
+    cs[s[,i]<e[1]] <- F # species below low threshold are not available
+    k.s <- which(cs) # available species
+    k.r <- which(rbind(cs==F) %*% rn$mr == 0) # reactions with all reactants available
     if (length(k.r)==0) next
     v[k.r,i] <- dt*p[k.r]*exp(rbind(log(s[k.s,i])) %*% rn$mr[k.s,k.r])
   }
   return(list(s=s,v=v,t=t))
 }
 
+# returns tconv (convergence time) an ttot (total time) for simulation results sm
 sm.conv <- function(sm) {
   f <- sign(sm$v[,ncol(sm$v)])
   m <- apply(sign(sm$v),2,function(v) all(v==f))
   cnv <<- m
   k <- match(F,rev(m))
   return(c(tconv = if (!is.na(k)) sm$t[length(sm$t)-k+1] else 0, ttot = sm$t[length(sm$t)]))
+}
+
+# returns the final state of reaction network rn and simulation results sm
+sm.final <- function(rn,sm) {
+  v <- sm$v[,nrow(sm$v)]
+  return(rn.support(rn,which(v>0)))
 }
 
 sm.display <- function(sm,L=1000) {
@@ -81,6 +98,8 @@ sm.example <- function(rn=sm.genrn()) {
   print(sm$v[,ncol(sm$v)])
   print(floor(log10(sm$s[,ncol(sm$s)])))
   print(floor(log10(sm$v[,ncol(sm$v)])))
+  if (!is.null(rn$sid)) cat("final state:",rn$sid[sm.final(rn,sm)],"\n")
+  else cat("final state:",sm.final(rn,sm),"\n")
   gc()
   sm.display(sm)
 }

@@ -97,7 +97,7 @@ rn.read <- function(file) {
 }
 
 # displays selected reactions i (defaults to all) of a reaction network rn, with species substitutions s (by default none)
-# if file is not "" instead of displaying the network is saved in that file
+# if file is not "" instead of displaying the network it is saved in that file
 rn.display <- function(rn,i=1:ncol(rn$mr),s=1:nrow(rn$mr),file="") {
   if (file!="" && file.exists(file)) file.remove(file)
   sx <- if (!is.null(rn$sx)) rn$sx else 1:nrow(rn$mr)
