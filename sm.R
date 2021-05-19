@@ -23,7 +23,7 @@ sm.genrn <- function(L=12,s=1) {
 # Euler method simulation of a reaction network rn for n iterations at dt time step (adaptative)
 # with initial state s0 (infused up to time t0), mass action parameter p (vector, one component per reaction),
 # minimum activation threshold e (vector: low, high) and maximum species concentration w
-sm.sim <- function(rn,n=2000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=0,p=runif(ncol(rn$mr),.9,1.1),e=1e-3*c(1,10), w=1e2) {
+sm.sim <- function(rn,n=1000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=0,p=runif(ncol(rn$mr),.9,1.1),e=1e-3*c(1,10), w=1e2) {
   s <- matrix(0,nrow(rn$mr),n)  # state matrix (species concentration, one column vector per iteration)
   if (!is.null(rn$sid)) row.names(s) <- rn$sid else row.names(s) <- paste0("s",1:nrow(rn$mr))
   v <- matrix(0,ncol(rn$mr),n) # process matrix (reactions activity, one column vector per iteration)
@@ -42,7 +42,7 @@ sm.sim <- function(rn,n=2000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=0,p=runif(nco
       s[,i] <- pmin(pmax(0,s[,i-1]+f*ds*dt),w)
     }
     cs[s[,i]>e[2]] <- T # species over high threshold are available
-    cs[s[,i]<e[1]] <- F # species below low threshold are not available
+    cs[s[,i]<=e[1]] <- F # species below low threshold are not available
     k.s <- which(cs) # available species
     k.r <- which(rbind(cs==F) %*% rn$mr == 0) # reactions with all reactants available
     if (length(k.r)==0) next
@@ -62,7 +62,7 @@ sm.conv <- function(sm) {
 
 # returns the final state of reaction network rn and simulation results sm
 sm.final <- function(rn,sm) {
-  v <- sm$v[,nrow(sm$v)]
+  v <- sm$v[,ncol(sm$v)]
   return(rn.support(rn,which(v>0)))
 }
 
@@ -87,12 +87,13 @@ sm.display <- function(sm,L=1000) {
   plot_grid(g1,g2,ncol=1,nrow=2)
 }
 
-sm.example <- function(rn=sm.genrn()) {
+sm.example <- function(rn=sm.genrn(),n=1000,dt=.1) {
+  cat(nrow(rn$mr),"species,",ncol(rn$mr),"reactions:\n")
   rn.display(rn)
   o <- rn.linp_org(ucn$rn())
   cat("needed inflow",o$ifl,"\n")
   cat("overproducible",o$ovp,"\n")
-  sm <<- sm.sim(rn)
+  sm <<- sm.sim(rn,n=n,dt=dt)
   print(sm.conv(sm))
   print(sm$s[,ncol(sm$s)])
   print(sm$v[,ncol(sm$v)])
