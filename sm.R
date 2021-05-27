@@ -23,30 +23,37 @@ sm.genrn <- function(L=12,s=1) {
 # Euler method simulation of a reaction network rn for n iterations at dt time step (adaptative)
 # with initial state s0 (infused up to time t0), mass action parameter p (vector, one component per reaction),
 # minimum activation threshold e (vector: low, high) and maximum species concentration w
-sm.sim <- function(rn,n=1000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=0,p=runif(ncol(rn$mr),.9,1.1),e=1e-3*c(1,10), w=1e2) {
-  s <- matrix(0,nrow(rn$mr),n)  # state matrix (species concentration, one column vector per iteration)
+sm.sim <- function( rn,n=1000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=dt*n/10,p=runif(ncol(rn$mr),.9,1.1),
+                    e=1e-3*c(1,10), w=1e1, deficit=T, momentum=.95 ) {
+  s <- matrix(0,nrow(rn$mr),n) # state matrix (species concentration, one column vector per iteration)
   if (!is.null(rn$sid)) row.names(s) <- rn$sid else row.names(s) <- paste0("s",1:nrow(rn$mr))
   v <- matrix(0,ncol(rn$mr),n) # process matrix (reactions activity, one column vector per iteration)
+  vm <- numeric(ncol(rn$mr)) # process vector with momentum
   row.names(v) <- paste0("r",1:ncol(rn$mr))
-  t <- rep(0,n) # time
+  t <- numeric(n) # time vector
   m <- rn$mp - rn$mr
   if (length(e)<2) e <- c(e,e)
-  if (t0<=0) s[,1] <- pmax(0,s0)
   cs <- logical(nrow(rn$mr)) # current state (species available)
   for (i in 1:n) {
     if (i>1) {
-      ds <- m %*% v[,i-1,drop=F] # change of concentrations per time unit
-      k <- which(ds<0) # species that could drop to 0
-      f <- min(-s[k,i-1]/ds[k],1)
+      ds <- m %*% cbind(vm) # change of concentrations per time unit
+      if (deficit)
+        f <- 1
+      else {
+        k <- which(ds<0) # species that could drop to 0
+        f <- min(-s[k,i-1]/ds[k],1)
+      }
       t[i] <- t[i-1] + f*dt
-      s[,i] <- pmin(pmax(0,s[,i-1]+f*ds*dt),w)
+      s[,i] <- pmin(s[,i-1]+f*ds*dt,w)
     }
+    if (t[i]<=t0) s[,i] <- s[,i] + s0*(if (t0<=0) 1 else dt/t0)
     cs[s[,i]>e[2]] <- T # species over high threshold are available
     cs[s[,i]<=e[1]] <- F # species below low threshold are not available
     k.s <- which(cs) # available species
     k.r <- which(rbind(cs==F) %*% rn$mr == 0) # reactions with all reactants available
     if (length(k.r)==0) next
     v[k.r,i] <- dt*p[k.r]*exp(rbind(log(s[k.s,i])) %*% rn$mr[k.s,k.r])
+    vm <- momentum*vm + (1-momentum)*v[,i]
   }
   return(list(s=s,v=v,t=t))
 }
@@ -87,7 +94,7 @@ sm.display <- function(sm,L=1000) {
   plot_grid(g1,g2,ncol=1,nrow=2)
 }
 
-sm.example <- function(rn=sm.genrn(),n=1000,dt=.1) {
+sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {
   cat(nrow(rn$mr),"species,",ncol(rn$mr),"reactions:\n")
   rn.display(rn)
   o <- rn.linp_org(ucn$rn())
@@ -97,7 +104,7 @@ sm.example <- function(rn=sm.genrn(),n=1000,dt=.1) {
   print(sm.conv(sm))
   print(sm$s[,ncol(sm$s)])
   print(sm$v[,ncol(sm$v)])
-  print(floor(log10(sm$s[,ncol(sm$s)])))
+  print(floor(log10(pmax(0,sm$s[,ncol(sm$s)]))))
   print(floor(log10(sm$v[,ncol(sm$v)])))
   if (!is.null(rn$sid)) cat("final state:",rn$sid[sm.final(rn,sm)],"\n")
   else cat("final state:",sm.final(rn,sm),"\n")
