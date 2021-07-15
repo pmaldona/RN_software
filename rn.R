@@ -11,7 +11,7 @@ rn.testrn <- function(i=1) {
   if (i==1) { # farm model
     sid <- c("water","grass","cows","infrastructure","milk","dung","worms",
              "fertilizer","chickens","eggs","grain","straw","farmer","money")
-    mr <- matrix(0,length(sid),17); rownames(mr) <- sid; mp <- mr
+    mr <- matrix(0,length(sid),17); rownames(mr) <- sid; colnames(mr) <- paste0("r",1:17); mp <- mr
     mp["water",1] <- 1
     mr[c("grass","cows","infrastructure","water"),2] <- 1; mp[c("milk","cows","dung","infrastructure"),2] <- 1
     mr["dung",3] <- 1; mp[c("worms","fertilizer"),3] <- 1
@@ -29,25 +29,31 @@ rn.testrn <- function(i=1) {
     mr["worms",15] <- 1
     mr["infrastructure",16] <- 1
     mr[c("money","farmer","infrastructure"),17] <- 1; mp[c("farmer","infrastructure"),17] <- c(1,2)
-    return(list(sid=sid,mr=mr,mp=mp))
+    return(list(mr=mr,mp=mp))
   }
   else if (i==2) {
     sid <- c("a","b","c")
     mr <- cbind(c(1,0,0),c(0,1,0),c(0,0,1),c(1,0,0))
     mp <- cbind(c(0,1,0),c(0,0,1),c(1,0,0),c(0,0,1))
-    return(list(sid=sid,mr=mr,mp=mp))
+    rownames(mr) <- rownames(mp) <- c("a","b","c")
+    colnames(mr) <- colnames(mp) <- paste0("r",1:4)
+    return(list(mr=mr,mp=mp))
   }
   else if (i==3) { # SEIRS model for contagion
     sid <- c("s","e","i","r")
     mr <- cbind(c(1,0,1,0),c(0,1,0,0),c(0,0,1,0),c(0,0,0,1))
     mp <- cbind(c(0,1,1,0),c(0,0,1,0),c(0,0,0,1),c(1,0,0,0))
-    return(list(sid=sid,mr=mr,mp=mp))
+    rownames(mr) <- rownames(mp) <- c("s","e","i","r")
+    colnames(mr) <- colnames(mp) <- paste0("r",1:4)
+    return(list(mr=mr,mp=mp))
   }
   else if (i==4) { # mini ecology
     sid <- c("s","p","h","c") # soil, plant, herbivore, carnivore
     mr <- cbind(c(1,1,0,0),c(0,1,0,0),c(0,1,1,0),c(0,0,1,0),c(0,0,1,1),c(0,0,0,1))
     mp <- cbind(c(0,2,0,0),c(1,0,0,0),c(1,0,2,0),c(0,0,0,0),c(0,0,0,2),c(0,0,0,0))
-    return(list(sid=sid,mr=mr,mp=mp))
+    rownames(mr) <- rownames(mp) <- c("s","p","h","c") # soil, plant, herbivore, carnivore
+    colnames(mr) <- colnames(mp) <- paste0("r",1:6)
+    return(list(mr=mr,mp=mp))
   }
 }
 
@@ -86,35 +92,37 @@ rn.read <- function(file) {
       lp <- c(lp,list(er))
     }
   }
-  sid <- unique(union(unlist(lr),unlist(lp)))
-  sid <- sid[grep("^[^0-9]",sid)]
+  sid <- c()
+  for (i in 1:length(lr)) sid <- union(sid,union(lr[[i]]$id,lp[[i]]$id))
   mr <- mp <- matrix(0,length(sid),length(lr))
+  rownames(mr) <- rownames(mp) <- sid
+  colnames(mr) <- colnames(mp) <- paste0("r",1:ncol(mr))
   for (i in 1:length(lr)) {
     if (length(lr[[i]])>0) mr[sapply(lr[[i]]$id,match,sid),i] <- lr[[i]]$c
     if (length(lp[[i]])>0) mp[sapply(lp[[i]]$id,match,sid),i] <- lp[[i]]$c
   }
-  list(sid=sid,mr=mr,mp=mp)
+  list(mr=mr,mp=mp)
 }
 
-# displays selected reactions i (defaults to all) of a reaction network rn, with species substitutions s (by default none)
+# displays selected reactions i (defaults to all) of a reaction network rn
 # if file is not "" instead of displaying the network it is saved in that file
-rn.display <- function(rn,i=1:ncol(rn$mr),s=1:nrow(rn$mr),file="") {
+rn.display <- function(rn,i=1:ncol(rn$mr),file="") {
   if (file!="" && file.exists(file)) file.remove(file)
-  sx <- if (!is.null(rn$sx)) rn$sx else 1:nrow(rn$mr)
-  rx <- if (!is.null(rn$rx)) rn$rx else 1:ncol(rn$mr)
-  for (k in 1:length(s)) s[k] <- s[s[k]]
-  sid <- if (!is.null(rn$sid)) rn$sid else paste0("s",sx)
-  if (length(rx)>0) for (k in i) {
+  if (!is.null(rownames(rn$mr))) sid <- rownames(rn$mr)
+  else sid <- paste0("s",1:nrow(rn$mr))
+  if (!is.null(colnames(rn$mr))) rid <- colnames(rn$mr)
+  else rid <- paste0("r",1:ncol(rn$mr))
+  if (length(i)>0) for (k in i) {
     k.r <- which(rn$mr[,k]>0)
     k.p <- which(rn$mp[,k]>0)
-    m <- cbind(rbind(rn$mr[k.r,k],sid[s[k.r]]),rbind(rn$mp[k.p,k],sid[s[k.p]]))
+    m <- cbind(rbind(rn$mr[k.r,k],sid[k.r]),rbind(rn$mp[k.p,k],sid[k.p]))
     m <- rbind(m," + ")
     if(length(k.r)>0) m[3,length(k.r)] <- " => "
     else m <- cbind(c("","∅"," => "),m)
     if(length(k.p)==0) m <- cbind(m,c("","∅",""))
     m[3,ncol(m)] <- ";\n"
     m[1,m[1,]=="1"] <- ""
-    cat("R",rx[k],":\t",m,sep="",file=file,append=T)
+    cat(rid[k],":\t",m,sep="",file=file,append=T)
   }
 }
 
@@ -131,9 +139,19 @@ rn.sub <- function(rn,s=1:nrow(rn$mr)) {
   if (!is.null(rn$w)) srn$w <- rn$w[sr]
   srn$mr <- rn$mr[sr,rs]
   srn$mp <- rn$mp[sr,rs]
-  srn$sx <- sr
-  srn$rx <- rs
   return(srn)
+}
+
+# returns the species (index) that belong to the closure of a set of species s (index) of a reaction network rn
+rn.closure <- function(rn,s) {
+  repeat {
+    r <- which(colSums(rn$mr)==colSums(rn$mr[s,,drop=F])) # triggered reactions
+    ns <- which(rowSums(rn$mp[,r,drop=F])>0) # species produced by triggered reactions
+    l <- length(s)
+    s <- union(s,ns)
+    if (length(s)==l) break # nothing new
+  }
+  return(s)
 }
 
 # returns a sub-network of a reaction network nr by closing the set of species s, unreactive species are trimmed
@@ -147,12 +165,9 @@ rn.close <- function(rn,s) {
   }
   s <- sort(union(ns,which(rowSums(rn$mr[,r,drop=F])>0))) # support of triggered reactions
   srn <- list()
-  if (!is.null(rn$sid)) srn$sid <- rn$sid[s]
   if (!is.null(rn$w)) srn$w <- rn$w[s]
   srn$mr <- rn$mr[s,r]
   srn$mp <- rn$mp[s,r]
-  srn$sx <- s
-  srn$rx <- r
   return(srn)
 }
 
@@ -240,14 +255,14 @@ rn.example <- function() {
   rn <<- rn.testrn(1)
   cat("*** farm:\n")
   rn.display(rn)
-  cat("overproducible species:",rn$sid[rn.overprod(rn)],"\n")
-  ss <- sapply(c("grass","cows","milk","worms","dung"), function(s) match(T,rn$sid==s))  # the index of named species
-  srn <<- rn.sub(rn,s=setdiff(1:length(rn$sid),ss))
+  cat("overproducible species:",rownames(rn$mr)[rn.overprod(rn)],"\n")
+  ss <- sapply(c("grass","cows","milk","worms","dung"), function(s) match(T,rownames(rn$mr)==s))  # the index of named species
+  srn <<- rn.sub(rn,s=setdiff(1:nrow(rn$mr),ss))
   cat("*** dairyless farm:\n")
   rn.display(srn)
   l <- rn.linp_org(srn)$ifl
-  cat("needed inflow:",srn$sid[l],"\n")
-  cat("overproducible species:",srn$sid[rn.overprod(srn)],"\n")
+  cat("needed inflow:",rownames(srn$mr)[l],"\n")
+  cat("overproducible species:",rownames(srn$mr)[rn.overprod(srn)],"\n")
 }
 
 rn.test <- function(i=3,rn=rn.testrn(i)) {
