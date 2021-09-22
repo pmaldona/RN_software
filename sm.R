@@ -40,7 +40,7 @@ sm.sim <- function( rn,n=1000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=dt*n/10,p=ru
     inflow <- numeric(0)
   else if (inflow==T)
     inflow <- which(rowSums(rn$mp[,which(colSums(rn$mr)==0),drop=F])>0)
-  print(inflow)
+  # print(inflow)
   f <- 1 # time dilation factor
   for (i in 1:n) {
     if (i>1) {
@@ -66,17 +66,17 @@ sm.sim <- function( rn,n=1000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=dt*n/10,p=ru
     v[k.r,i] <- dt*p[k.r]*exp(rbind(log(s[k.s,i])) %*% rn$mr[k.s,k.r])
     vm <- momentum*vm + (1-momentum)*v[,i]
   }
-  return(list(s=s,sa=sa,v=v,t=t))
+  return(list(s=s,sa=sa,v=v,t=t))  # s: species concentration, sa: species abstract existence, v: flow vector, t: time
 }
 
 # returns the sequence of state abstractions from de simulation results sm of reaction network rn
 sm.abstr <- function(rn,sm) {
   l <- ncol(sm$v)
   ia <- c(1, 1 + which(colSums(sm$sa[,2:l]!=sm$sa[,1:(l-1)])>0)) # starting index of available species state bouts
-  v <- sm$sa[,ia]
+  v <- sm$sa[,ia,drop=F]
   n <- length(ia)
   sa <- integer(n) # sequence of states
-  na <- 0 # number of states
+  na <- 0 # counter of states
   for (j in 1:n) {
     if (sa[j]!=0) next
     sa[j] <- (na <- na+1)
@@ -92,24 +92,22 @@ sm.abstr <- function(rn,sm) {
     a[,j] <- v[,k]
     p[rn.closure(rn,which(v[,k])),j] <- T # the closure of the state
   }
-  # a <- integer(ne)
-  # na <- 0 # number of abstractions
-  # for (j in 1:ne) {
-  #   if (a[j]!=0) next
-  #   a[j] <- (na <- na+1)
-  #   if (j<ne) for (k in (j+1):ne) {
-  #     if (all(s[,j]==s[,k])) a[k] <- na
-  #   }
-  # }
-  # k <- sapply(1:na,function(j) match(j,a))
-  # s <- s[,k]
-  # a <- a[e]
-  # ia <- ie
-  # if (n>1) {
-  #   k <- 1 + which(a[2:n]==a[1:(n-1)])
-  #   ia <- ia[-k]; a <- a[-k] # repeated occurrences of abstractions are eliminated
-  # }
-  return(list(ia=ia,sa=sa,a=a,p=p))
+  ap <- integer(ncol(p)) # abstract states corresponding closed state
+  np <- 0 # counter of states
+  for (j in 1:ncol(p)) {
+    if (ap[j]!=0) next
+    ap[j] <- (np <- np+1)
+    if (j<ncol(p)) for (k in (j+1):ncol(p)) {
+      if (all(p[,j]==p[,k])) ap[k] <- np
+    }
+  }
+  j <- match(1:np,ap)
+  p <- p[,j,drop=F]
+  sp <- ap[sa]
+  if (length(sp)>1) j <- c(1,1+which((sp[-1]!=sp[-length(sp)])))
+  ip <- ia[j]
+  sp <- sp[j]
+  return(list(ia=ia,sa=sa,a=a,ap=ap,ip=ip,sp=sp,p=p))
 }
 
 # returns tconv (convergence time) an ttot (total time) for simulation results sm
@@ -121,7 +119,7 @@ sm.conv <- function(sm) {
   return(c(tconv = if (!is.na(k)) sm$t[length(sm$t)-k+1] else 0, ttot = sm$t[length(sm$t)]))
 }
 
-# returns the final state of reaction network rn and simulation results sm
+# returns the final closed state of reaction network rn and simulation results sm
 sm.final <- function(rn,sm) {
   v <- sm$v[,ncol(sm$v)]
   return(rn.support(rn,which(v>0)))
@@ -151,7 +149,7 @@ sm.display <- function(sm,L=1000) {
 sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {
   cat(nrow(rn$mr),"species,",ncol(rn$mr),"reactions:\n")
   rn.display(rn)
-  o <- rn.linp_org(ucn$rn())
+  o <- rn.linp_org(rn)
   cat("needed inflow",o$ifl,"\n")
   cat("overproducible",o$ovp,"\n")
   sm <<- sm.sim(rn,n=n,dt=dt,t0=0,momentum=0,norm=0)

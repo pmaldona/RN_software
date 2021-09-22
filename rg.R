@@ -208,7 +208,12 @@ rg.ucnet$methods(
     return(ok)
   },
   
-  rn = function() list(w=w,mr=mr,mp=mp,s=s)
+  rn = function() {
+    r <- list(w=w,mr=mr,mp=mp,s=s)
+    rownames(r$mr) <- rownames(r$mp) <- paste0("s",1:nrow(r$mr))
+    colnames(r$mr) <- colnames(r$mp) <- paste0("r",1:ncol(r$mr))
+    r
+  }
 )
 
 # attempts to cyclically connect a reaction network under construction to form a semi-organization
