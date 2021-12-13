@@ -20,10 +20,70 @@ sm.genrn <- function(L=12,s=1) {
   rn <<- ucn$rn()
 }
 
+# Simulation of a reaction network rn for n iterations with maximal random reactions.
+# Initial state s0 (vector, one component per species), reactions preference p (one component per reaction),
+sm.mrrsim <- function( rn, n=100*ncol(rn$mr), s0=runif(nrow(rn$mr),.9,1.1), p=runif(ncol(rn$mr),.3,3) ) {
+  s <- matrix(0,nrow(rn$mr),n) # state matrix (species concentration, one column vector per iteration)
+  sa <- matrix(F,nrow(rn$mr),n) # state matrix abstraction
+  rownames(s) <- rownames(rn$mr)
+  v <- matrix(0,ncol(rn$mr),n) # process matrix (reactions activity, one column vector per iteration)
+  rownames(v) <- colnames(rn$mr)
+  t <- numeric(n) # time vector
+  m <- rn$mp - rn$mr
+  cs <- logical(nrow(rn$mr)) # current state (boolean vector of the species that are available)
+  s[,1] <- s0 # starting state
+  for (i in 1:n) {
+    if (i>1) {
+      k <- sample(nrow(v),1,prob=v[,i-1])  # randomly chosen reaction
+      l <- which(m[,k]<0)  # species that are consumed
+      if (length(l)>0) f <- min(-s[l,i-1]/m[l,k])  # how much the reaction will be applied
+      else f <- 1  # just once if no consumption
+      t[i] <- t[i-1] + 1/nrow(v)
+      s[,i] <- s[,i-1]+f*m[,k]
+    }
+    cs[] <- s[,i] > 0
+    sa[,i] <- cs
+    k.r <- which(rbind(cs==F) %*% rn$mr == 0) # reactions with all reactants available
+    if (length(k.r)==0) break
+    v[k.r,i] <- p[k.r]
+  }
+  return(list(s=s,sa=sa,v=v,t=t))  # s: species concentration, sa: species abstract existence, v: flow vector, t: time
+}
+
+# Simple simulation of a reaction network rn for n iterations at dt time step with a constant flow vector.
+# Initial state s0 (vector, one component per species), flow vector p (one component per reaction),
+# p may be normalized, deficit of species allowed.
+sm.cfsim <- function( rn, n=1000, dt=.1, s0=runif(nrow(rn$mr),.9,1.1), p=runif(ncol(rn$mr),.3,3), norm=F ) {
+  if (norm) p <- p/mean(p)
+  s <- matrix(0,nrow(rn$mr),n) # state matrix (species concentration, one column vector per iteration)
+  sa <- matrix(F,nrow(rn$mr),n) # state matrix abstraction
+  rownames(s) <- rownames(rn$mr)
+  v <- matrix(0,ncol(rn$mr),n) # process matrix (reactions activity, one column vector per iteration)
+  rownames(v) <- colnames(rn$mr)
+  t <- numeric(n) # time vector
+  m <- rn$mp - rn$mr
+  cs <- logical(nrow(rn$mr)) # current state (boolean vector of the species that are available)
+  s[,1] <- s0 # starting state
+  for (i in 1:n) {
+    if (i>1) {
+      ds <- m %*% v[,i-1] # change of concentrations per time unit
+      t[i] <- t[i-1] + dt
+      s[,i] <- s[,i-1]+ds*dt
+    }
+    cs[] <- s[,i] > 0
+    sa[,i] <- cs
+    k.s <- which(cs) # available species
+    k.r <- which(rbind(cs==F) %*% rn$mr == 0) # reactions with all reactants available
+    if (length(k.r)==0) next
+    v[k.r,i] <- p[k.r]
+  }
+  return(list(s=s,sa=sa,v=v,t=t))  # s: species concentration, sa: species abstract existence, v: flow vector, t: time
+}
+
 # Euler method simulation of a reaction network rn for n iterations at dt time step (adaptative)
 # with initial state s0 (infused up to time t0), mass action parameter p (vector, one component per reaction),
 # minimum activation threshold e (vector: low, high), maximum species concentration w, acceptance of deficit of species,
-# momentum (0 => no momentum), and normalization norm (norm==0 => no normalization).
+# momentum (0 => no momentum), normalization norm (norm==0 => no normalization), inflow species kept constant.
 sm.sim <- function( rn,n=1000,dt=.1,s0=runif(nrow(rn$mr),.9,1.1),t0=dt*n/10,p=runif(ncol(rn$mr),.9,1.1),
                     e=1e-3*c(1,10), w=1e1, deficit=T, momentum=.95, norm=0, inflow=T ) {
   s <- matrix(0,nrow(rn$mr),n) # state matrix (species concentration, one column vector per iteration)
@@ -152,7 +212,10 @@ sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {
   o <- rn.linp_org(rn)
   cat("needed inflow",o$ifl,"\n")
   cat("overproducible",o$ovp,"\n")
-  sm <<- sm.sim(rn,n=n,dt=dt,t0=0,momentum=0,norm=0)
+  sm <<- sm.sim(rn,n=n,dt=dt,t0=0,e=c(.2,.2),w=Inf,momentum=0)
+  # sm <<- sm.sim(rn,n=n,dt=dt,t0=0,momentum=0)
+  # sm <<- sm.cfsim(rn,n=n,dt=dt)
+  # sm <<- sm.mrrsim(rn,n=n)
   print(sm.conv(sm))
   print(sm$s[,ncol(sm$s)])
   print(sm$v[,ncol(sm$v)])
@@ -161,5 +224,7 @@ sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {
   if (!is.null(rn$sid)) cat("final state:",rn$sid[sm.final(rn,sm)],"\n")
   else cat("final state:",sm.final(rn,sm),"\n")
   gc()
-  sm.display(sm)
+  g <- sm.display(sm)
+  print(g)
+  Sys.sleep(1)
 }

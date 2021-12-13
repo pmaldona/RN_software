@@ -104,6 +104,34 @@ rn.read <- function(file) {
   list(mr=mr,mp=mp)
 }
 
+# merges two reaction networks
+rn.merge <- function(rn1,rn2=NULL) {
+  if (!is.null(rn2)) {
+    if (!is.null(rownames(rn1$mr))) sid1 <- rownames(rn1$mr)
+    else sid1 <- paste0("s",1:nrow(rn1$mr))
+    if (!is.null(rownames(rn2$mr))) sid2 <- rownames(rn2$mr)
+    else sid2 <- paste0("s",1:nrow(rn2$mr))
+    sid <- sort(union(sid1,sid2))
+    mr <- matrix(0,length(sid),ncol(rn1$mr)+ncol(rn2$mr))
+    rownames(mr) <- sid
+    mp <- mr
+    mr[sid1,1:ncol(rn1$mr)] <- rn1$mr
+    mp[sid1,1:ncol(rn1$mr)] <- rn1$mp
+    mr[sid2,1:ncol(rn2$mr)+ncol(rn1$mr)] <- rn2$mr
+    mp[sid2,1:ncol(rn2$mr)+ncol(rn1$mr)] <- rn2$mp
+  }
+  else {
+    mr <- rn1$mr; mp <- rn1$mp
+  }
+  i <- which(rowSums(mr)+rowSums(mp)==0)
+  if (length(i)>0) { mr <- mr[-i,,drop=F]; mp <- mp[-i,,drop=F] }  # unused species are eliminated
+  i <- which(sapply(1:ncol(mr), function(k) all(mr[,k]==mp[,k])))
+  if (length(i)>0) { mr <- mr[,-i,drop=F]; mp <- mp[,-i,drop=F] }  # null reactions are eliminated
+  i <- which(duplicated(mr,MARGIN=2) & duplicated(mp,MARGIN=2))
+  if (length(i)>0) { mr <- mr[,-i,drop=F]; mp <- mp[,-i,drop=F] }  # duplicated reactions are eliminated
+  return(list(mr=mr,mp=mp))
+}
+
 # displays selected reactions i (defaults to all) of a reaction network rn
 # if file is not "" instead of displaying the network it is saved in that file
 rn.display <- function(rn,i=1:ncol(rn$mr),file="") {
@@ -126,8 +154,11 @@ rn.display <- function(rn,i=1:ncol(rn$mr),file="") {
   }
 }
 
-# returns the species of a reaction network rn supporting the reactions r (defaults to all)
+# returns the species of a reaction network rn supporting a set of reactions r (defaults to all reactions)
 rn.support <- function(rn,r=1:ncol(rn$mr)) return(which(rowSums(rn$mr[,r,drop=F]+rn$mp[,r,drop=F])>0))
+
+# returns the reactions of rn that are supported by a set of species s (defaults to all species)
+rn.supported <- function(rn,s=1:nrow(rn$mr)) return(which(colSums(rn$mr[s,,drop=F]>0)==colSums(rn$mr>0)))
 
 # returns a sub-network of a reaction network nr by species s (defaults to all), unreactive species are trimmed
 rn.sub <- function(rn,s=1:nrow(rn$mr)) {
@@ -142,6 +173,51 @@ rn.sub <- function(rn,s=1:nrow(rn$mr)) {
   return(srn)
 }
 
+# returns independently transient species
+rn.trans <- function(rn,mr=rn$mr,mp=rn$mp) {
+  i <- which(colSums(mr>0)==1)  # reactions with only one reactant
+  return(which(rowSums(mr[,i,drop=F])>0 & rowSums(mp-mr>0)==0))  # lone reactants that are not produced
+}
+
+# returns "unproductive" species of a reaction network
+rn.unprods <- function(rn,mr=rn$mr,mp=rn$mp) {
+  i <- which(colSums(mp)==0)  # unproductive reactions
+  if (length(i)>0) {
+    j <- which(rowSums(mr[,-i,drop=F])>0)  # directly productive species
+    while (length(j)>0) {
+      k <- which(colSums(mr[j,i,drop=F])>0)  # i[k] indirectly productive reactions
+      if (length(k)==0) break
+      j <- which(rowSums(mr[,i[k],drop=F])>0)  # indirectly productive species
+      i <- i[-k]
+    }
+  }
+  return(which(rowSums(mr[,i,drop=F])>0 | rowSums(mr)==0))
+}
+
+# returns a trimmed version of a reaction network rn (non reactive and consumed only species are recursively eliminated)
+rn.trim <- function(rn) {
+  mr <- rn$mr; mp <- rn$mp
+  repeat {
+    f <- T
+    i <- rn.trans(NULL,mr,mp)
+    if (length(i)>0) {
+      f <- F
+      j <- which(colSums(mr[i,,drop=F])>0)  # reactions using transient species
+      mr <- mr[-i,-j,drop=F]; mp <- mp[-i,-j,drop=F]  # are eliminated as well as the species 
+    }
+    i <- rn.unprods(NULL,mr,mp)
+    if (length(i)>0) { f <- F; mr <- mr[-i,,drop=F]; mp <- mp[-i,,drop=F] }  # unused species are eliminated
+    i <- which(sapply(1:ncol(mr), function(k) all(mr[,k]==mp[,k])))
+    if (length(i)>0) { f <- F; mr <- mr[,-i,drop=F]; mp <- mp[,-i,drop=F] }  # null reactions are eliminated
+    i <- which(duplicated(mr,MARGIN=2) & duplicated(mp,MARGIN=2))
+    if (length(i)>0) { f <- F; mr <- mr[,-i,drop=F]; mp <- mp[,-i,drop=F] }  # duplicated reactions are eliminated
+    i <- which(duplicated(mr,MARGIN=1) & duplicated(mp,MARGIN=1))
+    if (length(i)>0) { f <- F; mr <- mr[-i,,drop=F]; mp <- mp[-i,,drop=F] }  # complexes are reduced to the first species
+    if (f) break
+  }
+  return(list(mr=mr,mp=mp))
+}
+
 # returns the species (index) that belong to the closure of a set of species s (index) of a reaction network rn
 rn.closure <- function(rn,s) {
   repeat {
@@ -151,7 +227,7 @@ rn.closure <- function(rn,s) {
     s <- union(s,ns)
     if (length(s)==l) break # nothing new
   }
-  return(s)
+  return(sort(s))
 }
 
 # returns a sub-network of a reaction network nr by closing the set of species s, unreactive species are trimmed
@@ -171,21 +247,18 @@ rn.close <- function(rn,s) {
   return(srn)
 }
 
-# returns the basic sets of a reaction network rn (species s, reactions r, core reactions cr)
+# returns the basic sets of a reaction network rn (indexes to species s, reactions r, core reactions cr)
 rn.basics <- function(rn) {
-  b <- lapply(1:ncol(rn$mr), function(r) {
-    crn <- rn.close(rn,rn.support(rn,r))
-    return(list(s=crn$sx,r=crn$rx))
-  })
+  b <- lapply(1:ncol(rn$mr), function(r) list(s=rn.closure(rn,rn.support(rn,r))))
   i <- 1
   while (i<length(b)) {
     j <- i + 1
     while (j<=length(b))
-      if (setequal(b[[i]]$r,b[[j]]$r)) b[[j]] <- NULL else j <- j + 1
+      if (setequal(b[[i]]$s,b[[j]]$s)) b[[j]] <- NULL else j <- j + 1
     i <- i + 1
   }
   for (i in 1:length(b)) {
-    b[[i]]$cr = b[[i]]$r
+    b[[i]]$cr <- b[[i]]$r <- unname(rn.supported(rn,b[[i]]$s))
     for (j in 1:length(b))
       if (i!=j && length(setdiff(b[[j]]$r,b[[i]]$r))==0) b[[i]]$cr <- setdiff(b[[i]]$cr,b[[j]]$r)
   }
@@ -208,25 +281,31 @@ rn.linp_org <- function(rn,w=NULL,inflow=NULL,destruct=F) {
   Cost <- rep(0,ncol(S)) # cost of processes is 0...
   Cost[1:Ns+Ns*destruct] <- w # except for creation (or destruction) reactions with cost w to be minimized
   rn.linp.r <<- linp(E=S,f,G=diag(2*Ns+Nr),h,Cost)
-  # The process column vector v (unknown to be solved) is decomposed in [vc,vd,vo] (creation/destruction/original network)  
-  # The equations are S v = f = 0, v>=h ([vc,vd,vo] >= [0,0,1]), Cost = w . vc' (dot product)
+  # The unknown to be solved is the process column vector v = [vc,vd,vo] (creation/destruction/original network).
+  # The result for v is stored in the variable rn.linp.r$X (vc is X[1:Ns], vd is X[Ns+(1:Ns)]).
+  # The equations are S v = f (with f=0), G v >= h (i.e. [vc,vd,vo] >= [0,0,1] because G is the identity matrix).
+  # Only the original network reactions are constrained to be strictly positive (here arbitrarily vo >= 1).
+  # The cost is  Cost . vc  (dot product) or  Cost . vd  when destruction is penalized instead of creation.
   # The linear programming ideal result is every prepended creation reaction with rate 0 (minimal Cost 0).
   # It implies that there is at least one original process vector that can sustain every species (and even increase
   # them if destruction reactions have positive rate). In that case the reaction network is a proper organization.
   # If not it can be converted into one by adding the extra inflow of species with creation rate > 0.
-  # Returns the indexes of species needed as extra inflow and overproduced species.
+  # Returns the indexes of species needed as extra inflow and overproduced species in the particular solution found.
   return(list(ifl=which(rn.linp.r$X[1:Ns]>0),ovp=which(rn.linp.r$X[Ns+1:Ns]>0)))
 }
 
-# verifies which species of a reaction network rn (not necessarily an organization) are overproducible
-# returns a list of overproducible species
-rn.overprod <- function(rn,s=1:nrow(rn$mr)) {
+# verifies which species s (index set) of a reaction network rn (not necessarily an organization) are overproducible
+# given an extra inflow (index set)
+# returns a list of overproducible species (index set)
+rn.overprod <- function(rn,s=1:nrow(rn$mr),inflow=integer(0)) {
   Ns <- nrow(rn$mr)  # number of species (rows)
   Nr <- ncol(rn$mr)  # number of reactions (columns)
-  S <- cbind(-diag(Ns),rn$mp-rn$mr) # stoichiometric matrix of rn with prepended destruction reactions
+  S <- cbind(-diag(Ns),diag(Ns)[,inflow],rn$mp-rn$mr) # stoichiometric matrix of rn with prepended reactions
+  # destruction of every species and creation of extra inflow species
   f <- rep(0,Ns) # flow vector constraint: production of every species = 0
   Cost <- rep(0,ncol(S)) # cost 0 for every reaction
-  o <- rep(F,Ns) # overproducible status for species (initially False, until proven to be True).
+  o <- rep(F,Ns) # overproducible status for species (initially False, until proven to be True)
+  o[inflow] <- T # extra inflow species are known to be overproducible
   for (p in s) {
     if (o[p]) next  # already known overproducible species are skipped
     S[p,p] <- 1   # creation instead of destruction for p

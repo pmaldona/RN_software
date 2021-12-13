@@ -246,6 +246,44 @@ rg.rcon <- function(ucn,N=1) {
   }
 }
 
+# creates a reaction network with Nr reactions, species S, species cardinalities C, reaction pattern generator P,
+# distributions D (species D$s and cardinalities D$c), rep repetition of reactions tolerance
+rg.rn <- function( Nr=100,S=paste0("s",1:Nr),C=1:3,P=rg.rsrt,D=list(s=length(S)/(1:length(S)),c=length(C)/(1:length(C))),
+                   rep=F ) {
+  if (!is.matrix(D$s)) D$s <- cbind(D$s)
+  while (ncol(D$s)<5) D$s <- cbind(D$s,D$s[,ncol(D$s)]) # D$s is a matrix with 5 columns cat, mix cons/prod, pure cons/prod
+  if (!is.matrix(D$c)) D$c <- cbind(D$c)
+  while (ncol(D$c)<5) D$c <- cbind(D$c,D$c[,ncol(D$c)]) # D$c is a matrix with 5 columns cat, mix cons/prod, pure cons/prod
+  mr <- mp <- matrix(0,length(S),Nr,dimnames=list(S,paste0("r",1:Nr)))
+  gen <- function() {
+    p <- P() # pattern
+    v <- c(rep(1,p$nc),rep(2,p$nm[1]),rep(3,p$nm[2]),rep(4,p$np[1]),rep(5,p$np[2])) # types of species
+    s <- NULL; ss <- 1:length(S)
+    for (i in v) {
+      if (is.null(s)) s <- sample(ss,1,prob=D$s[,i])
+      else s <- c(s, sample(ss[-s],1,prob=D$s[-s,i])) # species are chosen without repetition
+    }
+    a <- rbind(sapply(v,function(i) sample(1:length(C),2,replace=sum(D$c[,i]>0)<2,prob=D$c[,i])))
+    j <- which(v==1); a[2,j] <- a[1,j] # catalizers have the same cardinality on both sides
+    j <- which((v==2|v==3) & a[1,]==a[2,]); a[2,j] <- a[1,j]+1 # mixed species have different cardinalities on each side
+    j <- which(v==4|v==5); a[2,j] <- 0 # pure species exist only on one side of the reaction
+    j <- which(v==2 & a[1,]<a[2,] | v==3 & a[2,]<a[1,] | v==5); a[,j] <- a[2:1,j] # right order
+    return(list(p=p,v=v,s=s,a=a))
+  }
+  dupl <- function(m,i) which(sapply(1:(i-1),function(j) all(m[,j]==m[,i])))
+  g <- gen(); mr[g$s,1] <- g$a[1,]; mp[g$s,1] <- g$a[2,]
+  for (i in 2:Nr) {
+    repeat {
+      g <- gen()
+      mr[g$s,i] <- g$a[1,]; mp[g$s,i] <- g$a[2,]
+      if (rep || length(intersect(dupl(mr,i),dupl(mp,i)))==0) break  # ok if repetition tolerated or non redundant reaction
+      mr[g$s,i] <- 0; mp[g$s,i] <- 0
+    }
+  }
+  j <- which(rowSums(mr+mp)>0)
+  return(list(mr=mr[j,],mp=mp[j,]))
+}
+
 rg.example <- function(L=10,s=1) {
   lr <<- switch(s,
     rg.lreac(L=L,U=L,g=rg.genreac(dCM=rg.dCM(C=1:2,M=1))), # (1) unbalanced
@@ -254,7 +292,8 @@ rg.example <- function(L=10,s=1) {
     rg.lreac(L=L,U=L,g=rg.genreac(dCM=rg.dCM(M=1),frt=function() rg.rrt(N=c(3,3)))), # (4) unbalanced with up to 3 reac./prd.
     rg.lreac(L=L,U=L,g=rg.genreac(dCM=rg.dCM(C=1:2,M=1,dC=c(1000,1)),frt=rg.rsrt)), # (5) unbalanced
     rg.lreac(L=L,g=rg.genreac(dCM=rg.dCM(C=1:2,M=1,dC=c(1000,1)),frt=rg.rsrt)), # (6) balanced
-    rg.lreac(L=L,g=rg.genreac(dCM=rg.dCM(C=1,M=1), frt=function() rg.rsrt(m=cbind(0,0,0,1,1,1)))) # (7) balanced
+    rg.lreac(L=L,g=rg.genreac(dCM=rg.dCM(C=1,M=1), frt=function() rg.rsrt(m=cbind(0,0,0,1,1,1)))), # (7) balanced
+    rg.rn()  # (8) alternative generator
   )
   ucn0 <<- rg.ucnet(lreac=lr)
   ucn <<- ucn0$copy()
