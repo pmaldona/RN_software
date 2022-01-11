@@ -80,6 +80,49 @@ sm.cfsim <- function( rn, n=1000, dt=.1, s0=runif(nrow(rn$mr),.9,1.1), p=runif(n
   return(list(s=s,sa=sa,v=v,t=t))  # s: species concentration, sa: species abstract existence, v: flow vector, t: time
 }
 
+# Euler method simulation of a mass action kinetics of a reaction network rn for n iterations at dt time step
+# with initial state s0 (vector of concentrations, one component per species), mass action parameter p (vector,
+# one component per reaction), minimum concentration threshold e.
+# Inflow species are kept constant if inflow parameter is true.
+# The time step is strictly respected so that concentrations can drop below zero.
+# The time unit is warped so that the maximum concentration drop is 1 per time unit.
+# The dt time step can be interpreted as the maximum concentration drop per iteration.
+sm.maksim <- function(rn,n=1000,dt=.2,s0=runif(nrow(rn$mr),.9,1.1),p=runif(ncol(rn$mr),.9,1.1),e=.1,inflow=T) {
+  s <- matrix(0,nrow(rn$mr),n) # state matrix (species concentration, one column vector per iteration)
+  s[,1] <- s0 # initial state
+  sa <- matrix(F,nrow(rn$mr),n) # state matrix abstraction
+  rownames(s) <- rownames(rn$mr)
+  rownames(sa) <- rownames(rn$mr)
+  v <- matrix(0,ncol(rn$mr),n) # process matrix (reactions activity, one column vector per iteration)
+  rownames(v) <- colnames(rn$mr)
+  t <- numeric(n) # time vector
+  m <- rn$mp - rn$mr # process matrix
+  cs <- logical(nrow(rn$mr)) # current state (species available)
+  if (inflow==F)
+    inflow <- numeric(0)
+  else if (inflow==T)
+    inflow <- which(rowSums(rn$mp[,which(colSums(rn$mr)==0),drop=F])>0) # else a given vector of species (index)
+  for (i in 1:n) {
+    if (i>1) {
+      ds <- m %*% v[,i-1] # change of concentrations per normalized time unit
+      mds <- - min(ds,-0.01) # normalization factor for ds (minimum component will be set to -1 unless to small)
+      if (mds==0) mds <- 1 # in case no species is being consumed
+      t[i] <- t[i-1] + dt*exp(-mlv)/mds
+      s[,i] <- s[,i-1]+ds*dt/mds
+    }
+    cs[] <- s[,i] > e
+    sa[,i] <- cs
+    k.s <- which(cs) # currently available species
+    k.r <- which(rbind(cs==F) %*% rn$mr == 0) # reactions with all reactants available
+    if (length(k.r)==0) break  # we have reached a non reactive end state, nothing more to simulate...
+    lv <- rbind(log(s[k.s,i])) %*% rn$mr[k.s,k.r]  # the flow vector in logarithmic scale
+    mlv <- max(lv)  # normalization factor for flow vector and time unit
+    v[k.r,i] <- exp(lv-mlv)  # normalized flow vector (maximum component is 1)
+  }
+  return(list(s=s[,1:i],sa=sa[,1:i],v=v[,1:i],t=t[1:i]))
+  # s: species concentration, sa: species abstract existence, v: flow vector, t: time
+}
+
 # Euler method simulation of a reaction network rn for n iterations at dt time step (adaptative)
 # with initial state s0 (infused up to time t0), mass action parameter p (vector, one component per reaction),
 # minimum activation threshold e (vector: low, high), maximum species concentration w, acceptance of deficit of species,
@@ -212,7 +255,8 @@ sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {
   o <- rn.linp_org(rn)
   cat("needed inflow",o$ifl,"\n")
   cat("overproducible",o$ovp,"\n")
-  sm <<- sm.sim(rn,n=n,dt=dt,t0=0,e=c(.2,.2),w=Inf,momentum=0)
+  sm <<- sm.maksim(rn,n=n,dt=dt,e=.2)
+  # sm <<- sm.sim(rn,n=n,dt=dt,t0=0,e=c(.2,.2),w=Inf,momentum=0)
   # sm <<- sm.sim(rn,n=n,dt=dt,t0=0,momentum=0)
   # sm <<- sm.cfsim(rn,n=n,dt=dt)
   # sm <<- sm.mrrsim(rn,n=n)

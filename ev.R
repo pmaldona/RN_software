@@ -2,8 +2,8 @@
 source("mgg.R")
 source("sm.R")
 
+# distribution functions for the size of generated perturbations (n is the maximum perturbation size)
 ev.Pexp <- function(n) exp(-(1:n))
-
 ev.P <- function(n) (n+1)/2 - abs((n+1)/2 - (1:n))
 
 # incremental computation of the evolution potential within a reaction network under additive structural perturbations
@@ -13,7 +13,7 @@ ev.P <- function(n) (n+1)/2 - abs((n+1)/2 - (1:n))
 ev.evol <- function( e=NULL, rn = if (!is.null(e)) e$rn else rn.testrn(), s0=NULL, P=ev.P, M=1, n=5000, systematic=T ) {
   if (is.null(e)) e <- list(rn=rn,ev=NULL)
   rSums <- colSums(rn$mr) # reactants sums for each reaction (used to determine active reactions given a state)
-  L <- nrow(e$rn$mr)
+  L <- nrow(e$rn$mr) # number of species in the reaction network
   if (is.null(s0) && (is.null(e$ev)|systematic)) s0 <- matrix(F,L,1) # starting from the empty set by default
   if (!is.null(s0)) s0[rn.closure(e$rn,s0)] <- T  # the closure of s0
   j <- NULL  # index of the starting state
@@ -34,7 +34,7 @@ ev.evol <- function( e=NULL, rn = if (!is.null(e)) e$rn else rn.testrn(), s0=NUL
       if (!systematic & (i>1 || is.null(j)))
         j <- sample(ncol(e$ev$s),1)  # the index of the state in e$ev from which the exploration is continued
       s <- e$ev$s[,j]  # the state (logical vector of contained species)
-      if (sum(s)<L) break  # s is not complete within rn
+      if (sum(s)<L) break  # s is not complete within rn (whenever s is complete we choose again)
     }
     rS <- colSums(e$rn$mr[s,,drop=F])  # reactants sums
     nr <- rS!=rSums  # non active reactions
@@ -44,10 +44,11 @@ ev.evol <- function( e=NULL, rn = if (!is.null(e)) e$rn else rn.testrn(), s0=NUL
     s0 <- s  # starting state for the simulation
     s0[as] <- T  # to set added species
     s0[rn.closure(e$rn,which(s0))] <- T  # the closure of s0
-    sm <- sm.sim(e$rn,n=n,s0=s0,p=runif(ncol(rn$mr),.3,3),e=c(.1,.1),w=Inf,momentum=0)
+    sm <- sm.maksim(e$rn,n=n,s0=s0,p=runif(ncol(rn$mr),.3,3))
+    # sm <- sm.sim(e$rn,n=n,s0=s0,p=runif(ncol(rn$mr),.3,3),e=c(.1,.1),w=Inf,momentum=0)
     # sm <- sm.sim(e$rn,n=n,s0=s0,p=runif(ncol(rn$mr),.3,3),momentum=0)
     # sm <- sm.cfsim(e$rn,n=n,s0=s0)
-    p <- sm$sa[,n,drop=F]  # last abstract state
+    p <- sm$sa[,ncol(sm$sa),drop=F]  # last abstract state
     p[rn.closure(e$rn,which(p))] <- T  # its closure
     sf <- which(apply(e$ev$s,2,function(s) all(s==p)))  # index of p in e$ev$s
     if (length(sf)==0) {  # p is a new state to be added
@@ -58,7 +59,8 @@ ev.evol <- function( e=NULL, rn = if (!is.null(e)) e$rn else rn.testrn(), s0=NUL
     e$ev$t[[j]]$s0 <- cbind(e$ev$t[[j]]$s0,s0,deparse.level=0)
     e$ev$t[[j]]$sf <- c(e$ev$t[[j]]$sf,sf[1])
   }
-  return(e)
+  return(e) # e$rn reaction network, e$ev$s end (or starting) states, e$ev$t[[i]] transitions generated from e$ev$s[,i]
+            # e$ev$t[[i]]$s0 perturbed states generated, e$ev$t[[i]]$sf final states reached simulating the dynamics
 }
 
 # analysis of the results of the evolution
@@ -77,7 +79,7 @@ ev.analyse <- function(e) {
   tpf <- matrix(0,ncol(e$ev$s),0)  # transition matrix from perturbed states to final states (empty at the start)
   k <- 0
   for (i in 1:ncol(s0))
-    if (i==1 || !all(s0[,i]==s0[,i-1])) {  # new 
+    if (i==1 || !all(s0[,i]==s0[,i-1])) {  # a new perturbed state (different from the preceding one)
       k <- k + 1; p <- cbind(p,s0[,i]); tpf <- cbind(tpf,0); tpf[sf[i],k] <- 1
     }
     else {
@@ -88,8 +90,8 @@ ev.analyse <- function(e) {
   e$dpf <- dpf  # distance from perturbed states to final states
   cs <- colSums(tpf)
   ntpf <- sweep(tpf,2,cs+(cs==0),"/")  # column normalized transition matrix
-  pdf <- t(sapply(0:nrow(oe$rn$mr), function(i) rowSums(dpf==i)))  # perturbations at given distances from final states
-  cpdf <- t(sapply(0:nrow(oe$rn$mr), function(i) rowSums((dpf==i)*ntpf)))  # the ones that converge to the final states
+  pdf <- t(sapply(0:nrow(e$rn$mr), function(i) rowSums(dpf==i)))  # perturbations at given distances from final states
+  cpdf <- t(sapply(0:nrow(e$rn$mr), function(i) rowSums((dpf==i)*ntpf)))  # the ones that converge to the final states
   e$ntpf <- ntpf; e$pdf <- pdf; e$cpdf <- cpdf
   m <- cpdf/(pdf+(pdf==0))
   e$lat <- colSums(sweep(m,1,1:nrow(pdf),"*")*(pdf>0))
@@ -118,7 +120,7 @@ ev.disp <- function(ae,z=1,save=F) {
 
 ev.do <- function(sm=T) {
   mP <- rbind(c(0,0,0,1,1,50),c(0,0,0,1,2,20),c(0,0,0,2,1,20),c(0,0,0,2,2,10))
-  Nr <- 100 
+  Nr <- 100
   S <- paste0("s",1:Nr)
   C <- 1:3
   P <- function() rg.rsrt(m=mP)
@@ -126,7 +128,7 @@ ev.do <- function(sm=T) {
   rn <<- rg.rn(Nr=Nr,S=S,C=C,P=P,D=D)
   trn <<- rn.trim(rn)
   if (sm) {
-    e <<- ev.evol(rn=trn,M=5000,n=5000)
+    e <<- ev.evol(rn=trn,M=5000,n=1000)
     ae <<- ev.analyse(e)
     ev.disp(ae)
   }
