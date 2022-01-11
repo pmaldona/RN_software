@@ -132,6 +132,40 @@ scr.rndisp <- function(rn=trn) {
 
 }
 
+#-------------------------------------------------------------
+# Script to test the dynamic simulation of a reaction network
+#
+scr.simul <- function(rn=sm.genrn(12),n=1000,dt=.2,e=.2) {
+  
+  # (1) by default we are using a small random generated reaction network produced by a different algorithm
+  # we display the network
+  cat(nrow(rn$mr),"species,",ncol(rn$mr),"reactions:\n")
+  rn.display(rn)
+  
+  # (2) using linear programming to statically assess the reaction network
+  o <- rn.linp_org(rn)
+  cat("needed inflow",o$ifl,"\n")
+  cat("overproducible",o$ovp,"\n")
+  
+  # (3) a mass action kinetics simulation for n iterations, dt time step and e existence threshold 
+  sm <<- sm.maksim(rn,n=n,dt=dt,e=e)
+  
+  # (4) we display the final state (the closed set abstraction of the actual final state)
+  s <- sm.final(rn,sm)
+  cat("final closed abstract state:",s,"\n")
+  v <- sm$v[,ncol(sm$v)] > 0
+  cat("final activity:\n"); print(v)
+  rs <- rn.supported(rn,s) # reactions supported by the selected species
+  v[] <- F; v[rs] <- T
+  cat("final closed abstract activity:\n"); print(v)
+  
+  # (5) graphic displaying of the simulation
+  gc()  # garbage collection... all unused memory space in R is recovered
+  g <- sm.display(sm) # the graphs are generated
+  print(g) # the graphs are displayed
+  Sys.sleep(1) # to give time so the graphs are displayed before exiting the current script
+}
+
 #--------------------------------------------------------------------------
 # Scripts related to testing the evolutive potential of a reaction network
 #
@@ -139,7 +173,7 @@ scr.rndisp <- function(rn=trn) {
 scr.evol <- function(rn=scr.genrn(),M=5000,n=1000) {
 
   # (1) calculates the evolutive potential of rn (by default a random generated reaction network)
-  # for M random perturbations and n iterations of a mass action kinetics to reach the end state
+  # for M random perturbations and n iterations of a mass action kinetics to reach the final state
   e <<- ev.evol(rn=rn,M=M,n=n)
   
   # (2) analyses the raw results of the first step
@@ -147,5 +181,20 @@ scr.evol <- function(rn=scr.genrn(),M=5000,n=1000) {
   
   # (3) displays some distributions and indicators over the analysis
   ev.disp(ae)
+  
+}
+
+scr.evol2 <- function(e=globalenv()$e, rn = if (!is.null(e)) e$rn else scr.genrm(),M=5000,n=1000) {
+  
+  # (1) we define a distribution for the size of perturbations, in this case all perturbations will be of size 1
+  P <- function(n) c(1,rep(0,n-1))
+  # the size of a perturbation is the number of *reactions* we add
+  
+  # (2) we add some more perturbations starting from a randomly selected state previously generated
+  e2 <<- ev.evol(e,rn,P=P,M=M,n=n,systematic=F)
+  # by default systematic=T, meaning that we are always perturbing the same state, by default the closure of the void
+  # systematic=F means a random selection of the state to be perturbed. The states are the ones that were found as
+  # final states of previous perturbations. New perturbation are incrementally added to the already calculated ones
+  # in e (if it exists). The parameter P is used to indicate the distribution of perturbation size.
   
 }

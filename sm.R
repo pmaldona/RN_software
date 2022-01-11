@@ -225,7 +225,8 @@ sm.conv <- function(sm) {
 # returns the final closed state of reaction network rn and simulation results sm
 sm.final <- function(rn,sm) {
   v <- sm$v[,ncol(sm$v)]
-  return(rn.support(rn,which(v>0)))
+  s <- rn.support(rn,which(v>0))
+  return(rn.closure(rn,s))
 }
 
 sm.display <- function(sm,L=1000) {
