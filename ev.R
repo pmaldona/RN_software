@@ -18,13 +18,14 @@ ev.evol <- function( e=NULL, rn = if (!is.null(e)) e$rn else rn.testrn(), s0=NUL
   if (!is.null(s0)) s0[rn.closure(e$rn,s0)] <- T  # the closure of s0
   j <- NULL  # index of the starting state
   if (is.null(e$ev)) {
-    e$ev <- list(s=cbind(s0),t=list(list(s0=NULL,sf=NULL))) # s: states, t: their transitions
+    e$ev <- list(s=cbind(s0),a=0,t=list(list(s0=NULL,sf=NULL))) # s: states, a: attractiveness, t: their transitions
     rownames(e$ev$s) <- rownames(e$rn$mr)
   }
   if (!is.null(s0)) {  # the incremental case starting from s0
     j <- which(apply(e$ev$s,2,function(s) all(s==s0)))  # index of s0 in e$ev$s
     if (length(j)==0) {  # s0 is a new state to be added
       e$ev$s <- cbind(e$ev$s,s0)
+      e$ev$a <- c(e$ev$a,0)
       e$ev$t <- c(e$ev$t,list(list(s0=NULL,sf=NULL)))
       j <- ncol(e$ev$s)
     }
@@ -34,7 +35,7 @@ ev.evol <- function( e=NULL, rn = if (!is.null(e)) e$rn else rn.testrn(), s0=NUL
       if (!systematic & (i>1 || is.null(j)))
         j <- sample(ncol(e$ev$s),1)  # the index of the state in e$ev from which the exploration is continued
       s <- e$ev$s[,j]  # the state (logical vector of contained species)
-      if (sum(s)<L) break  # s is not complete within rn (whenever s is complete we choose again)
+      if (sum(s)<L) break  # ok if s is not the whole network (if it is, we choose another starting state)
     }
     rS <- colSums(e$rn$mr[s,,drop=F])  # reactants sums
     nr <- rS!=rSums  # non active reactions
@@ -53,10 +54,12 @@ ev.evol <- function( e=NULL, rn = if (!is.null(e)) e$rn else rn.testrn(), s0=NUL
     sf <- which(apply(e$ev$s,2,function(s) all(s==p)))  # index of p in e$ev$s
     if (length(sf)==0) {  # p is a new state to be added
       e$ev$s <- cbind(e$ev$s,p)
+      e$ev$a <- c(e$ev$a,0)
       e$ev$t <- c(e$ev$t,list(list(s0=NULL,sf=NULL)))
       sf <- ncol(e$ev$s)
     }
     e$ev$t[[j]]$s0 <- cbind(e$ev$t[[j]]$s0,s0,deparse.level=0)
+    e$ev$a[sf[1]] <- e$ev$a[sf[1]] + 1
     e$ev$t[[j]]$sf <- c(e$ev$t[[j]]$sf,sf[1])
   }
   return(e) # e$rn reaction network, e$ev$s end (or starting) states, e$ev$t[[i]] transitions generated from e$ev$s[,i]
@@ -68,6 +71,7 @@ ev.analyse <- function(e) {
   o <- do.call("order",unname(as.data.frame(t(e$ev$s))))
   o <- o[order(colSums(e$ev$s)[o])]
   e$ev$s <- e$ev$s[,o]
+  e$ev$a <- e$ev$a[o]
   oi <- o; oi[o] <- 1:length(o)
   for (i in 1:length(e$ev$t)) e$ev$t[[i]]$sf <- oi[e$ev$t[[i]]$sf]
   s0 <- NULL; sf <- NULL  # initial (s0, boolean vector of species) and final (sf, index to s) states

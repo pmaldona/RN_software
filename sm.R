@@ -84,7 +84,7 @@ sm.cfsim <- function( rn, n=1000, dt=.1, s0=runif(nrow(rn$mr),.9,1.1), p=runif(n
 # with initial state s0 (vector of concentrations, one component per species), mass action parameter p (vector,
 # one component per reaction), minimum concentration threshold e.
 # Inflow species are kept constant if inflow parameter is true.
-# The time step is strictly respected so that concentrations can drop below zero.
+# The time step is strictly respected so that concentrations can eventually drop below zero.
 # The time unit is warped so that the maximum concentration drop is 1 per time unit.
 # The dt time step can be interpreted as the maximum concentration drop per iteration.
 sm.maksim <- function(rn,n=1000,dt=.2,s0=runif(nrow(rn$mr),.9,1.1),p=runif(ncol(rn$mr),.9,1.1),e=.1,inflow=T) {
@@ -105,8 +105,8 @@ sm.maksim <- function(rn,n=1000,dt=.2,s0=runif(nrow(rn$mr),.9,1.1),p=runif(ncol(
   for (i in 1:n) {
     if (i>1) {
       ds <- m %*% v[,i-1] # change of concentrations per normalized time unit
-      mds <- - min(ds,-0.01) # normalization factor for ds (minimum component will be set to -1 unless to small)
-      if (mds==0) mds <- 1 # in case no species is being consumed
+      mds <- max(-ds,ds/10) # normalization factor for ds (minimum component will be set to -1, maximum to 10)
+      if (mds==0) mds <- 1
       t[i] <- t[i-1] + dt*exp(-mlv)/mds
       s[,i] <- s[,i-1]+ds*dt/mds
     }
@@ -229,7 +229,7 @@ sm.final <- function(rn,sm) {
   return(rn.closure(rn,s))
 }
 
-sm.display <- function(sm,L=1000) {
+sm.display <- function(sm,L=1000,simple=F) {
   require(ggplot2)
   require(reshape2)
   require(cowplot)
@@ -241,13 +241,22 @@ sm.display <- function(sm,L=1000) {
   }
   else
     i <- 1:l
-  d.s <- melt(t(sm$s[,i]),varnames=c("time","species"))
-  d.s$time <- sm$t[i[d.s$time]]
-  d.v <- melt(t(sm$v[,i]),varnames=c("time","reaction"))
-  d.v$time <- sm$t[i[d.v$time]]
-  g1 <- ggplot(d.s, aes(x=time, y=value, col=species)) + geom_line()
-  g2 <- ggplot(d.v, aes(x=time, y=value, col=reaction)) + geom_line()
-  plot_grid(g1,g2,ncol=1,nrow=2)
+  if (simple) {
+    d <- cbind(species=colSums(sm$sa[,i]),reactions=colSums(sm$v[,i]>0))
+    d <- melt(d,varnames=c("time","number of"))
+    d$iteration <- i
+    d <<- d
+    ggplot(d,aes(x=iteration, y=value, col=`number of`)) + geom_line()
+  }
+  else {
+    d.s <- melt(t(sm$s[,i]),varnames=c("time","species"))
+    d.v <- melt(t(sm$v[,i]),varnames=c("time","reaction"))
+    d.s$time <- sm$t[i[d.s$time]]
+    d.v$time <- sm$t[i[d.v$time]]
+    g1 <- ggplot(d.s, aes(x=time, y=value, col=species)) + geom_line()
+    g2 <- ggplot(d.v, aes(x=time, y=value, col=reaction)) + geom_line()
+    plot_grid(g1,g2,ncol=1,nrow=2)
+  }
 }
 
 sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {

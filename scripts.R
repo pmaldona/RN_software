@@ -13,12 +13,32 @@
 
 source("ev.R")  # all other R files are loaded by ev.R
 
+#-----------------------------------------------------------------------------
+# A script for generating random reaction networks and testing their dynamics
+# Use: scr.test()
+# It uses scritpts defined below
+#
+
+scr.test <- function() {
+  scr.gen() # a global variable rn with a random generated reaction network will be created
+  scr.simul(rn) # will simulate the dynamics of rn and display the end result and time graphs
+}
+
 #-------------------------------------------------
 # Scripts for generating random reaction networks
 #
 
-# a general script
-scr.genrn <- function(Nr=100,Ns=Nr) {
+scr.gen <- function(case=1) {
+  rn <<- switch(case,
+    rg.g1(Nr=20,Ns=10,extra=.5), # case 1: Nr reactions, Ns species
+    rg.bg(Nr=20,Rs=1:3,Rm=c(1,2),dsf=.2) # case 2: Nr reactions, number of species depends on Rs and dsf
+  )
+  rn <<- rn.merge(rn) # null or redundant reactions are filtered out, we may end with less reactions and species
+  trn <<- rn.trim(rn)  # a more elaborate filtering that eliminates also non reactive and obvious transient species
+}
+
+# a general script with a more complex generator
+scr.genrn2 <- function(Nr=100,Ns=Nr) {
 
   # (1) reaction patterns to be used:
   mP <- rbind(c(0,0,0,1,1,50),c(0,0,0,1,2,20),c(0,0,0,2,1,20),c(0,0,0,2,2,10))
@@ -75,8 +95,8 @@ scr.genrn <- function(Nr=100,Ns=Nr) {
   return(trn)
 }
 
-# a modification of the first script to generate some reactions with exclusive catalyzers
-scr.genrn2 <- function(Nr=100,Ns=Nr) {
+# a modification of the last script to generate some reactions with exclusive catalyzers
+scr.genrn3 <- function(Nr=100,Ns=Nr) {
   
   # (1) reaction patterns to be used:
   mP <- rbind(c(1,0,0,1,1,10),c(0,0,0,1,1,40),c(0,0,0,1,2,20),c(0,0,0,2,1,20),c(0,0,0,2,2,10))
@@ -135,6 +155,7 @@ scr.rndisp <- function(rn=trn) {
 #-------------------------------------------------------------
 # Script to test the dynamic simulation of a reaction network
 #
+
 scr.simul <- function(rn=sm.genrn(12),n=1000,dt=.2,e=.2) {
   
   # (1) by default we are using a small random generated reaction network produced by a different algorithm
@@ -144,24 +165,23 @@ scr.simul <- function(rn=sm.genrn(12),n=1000,dt=.2,e=.2) {
   
   # (2) using linear programming to statically assess the reaction network
   o <- rn.linp_org(rn)
-  cat("needed inflow",o$ifl,"\n")
-  cat("overproducible",o$ovp,"\n")
+  cat("needed inflow {",rownames(rn$mr)[o$ifl],"}\n")
+  cat("overproduced if inflow {",rownames(rn$mr)[o$ovp],"}\n")
+  cat("overproducible {",rownames(rn$mr)[rn.overprod(rn)],"}\n")
   
   # (3) a mass action kinetics simulation for n iterations, dt time step and e existence threshold 
   sm <<- sm.maksim(rn,n=n,dt=dt,e=e)
   
   # (4) we display the final state (the closed set abstraction of the actual final state)
   s <- sm.final(rn,sm)
-  cat("final closed abstract state:",s,"\n")
-  v <- sm$v[,ncol(sm$v)] > 0
-  cat("final activity:\n"); print(v)
-  rs <- rn.supported(rn,s) # reactions supported by the selected species
-  v[] <- F; v[rs] <- T
-  cat("final closed abstract activity:\n"); print(v)
+  cat("final closed abstract state {",rownames(rn$mr)[s],"}\n")
+  rs <- rn.supported(rn,s) # reactions supported by the final state
+  cat("final closed abstract activity: {",colnames(rn$mr)[rs],"}\n")
+  cat("missing reactions: {",colnames(rn$mr)[(1:ncol(rn$mr))[-rs]],"}\n")
   
   # (5) graphic displaying of the simulation
   gc()  # garbage collection... all unused memory space in R is recovered
-  g <- sm.display(sm) # the graphs are generated
+  g <- sm.display(sm,simple=F) # the graphs are generated (simple=T would generate a simpler graph)
   print(g) # the graphs are displayed
   Sys.sleep(1) # to give time so the graphs are displayed before exiting the current script
 }
@@ -170,6 +190,7 @@ scr.simul <- function(rn=sm.genrn(12),n=1000,dt=.2,e=.2) {
 # Scripts related to testing the evolutive potential of a reaction network
 #
 
+# testing of a reaction network using systematically the void as starting point and perturbations of any size
 scr.evol <- function(rn=scr.genrn(),M=5000,n=1000) {
 
   # (1) calculates the evolutive potential of rn (by default a random generated reaction network)
@@ -184,17 +205,21 @@ scr.evol <- function(rn=scr.genrn(),M=5000,n=1000) {
   
 }
 
+# testing of a reaction network using random starting points and perturbations of size 1
+# the script is designed to complete the results of a previous test stored in global variable e
+# if e is not available a new random reaction network is used instead
 scr.evol2 <- function(e=globalenv()$e, rn = if (!is.null(e)) e$rn else scr.genrm(),M=5000,n=1000) {
   
   # (1) we define a distribution for the size of perturbations, in this case all perturbations will be of size 1
   P <- function(n) c(1,rep(0,n-1))
   # the size of a perturbation is the number of *reactions* we add
   
-  # (2) we add some more perturbations starting from a randomly selected state previously generated
+  # (2) we add M more perturbations to e starting from randomly selected final states previously generated
   e2 <<- ev.evol(e,rn,P=P,M=M,n=n,systematic=F)
-  # by default systematic=T, meaning that we are always perturbing the same state, by default the closure of the void
+  # by default systematic=T meaning that we are always perturbing the same state, by default the closure of the void
   # systematic=F means a random selection of the state to be perturbed. The states are the ones that were found as
   # final states of previous perturbations. New perturbation are incrementally added to the already calculated ones
-  # in e (if it exists). The parameter P is used to indicate the distribution of perturbation size.
+  # in e. The parameter P is used to indicate the distribution of perturbation size.
   
 }
+

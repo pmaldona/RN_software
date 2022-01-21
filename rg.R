@@ -1,6 +1,119 @@
 
 # random generation of reaction networks
 
+# the most simple random network generator, Nr reactions (>1), Ns species (>1)
+# a minimal reaction network is randomly created where each reaction has one reactant and one product and each species
+# is used at least once as reactant and once as product, an extra proportion of assignments are carried out randomly
+# there are no inflow or outflow reactions, redundant or null reactions may be generated (rn.merge will filter them out)
+rg.g1 <- function(Nr=12,Ns=Nr,extra=.5) {
+  # (1) creation of the reactants and products Ns X Nr matrices of the reaction network with no species assigned
+  mr <- mp <- matrix(0,Ns,Nr,dimnames=list(paste0("s",1:Ns),paste0("r",1:Nr)))
+  # (2) assignment of one random reactant and one random product (different from the reactant) to each reaction
+  for (i in 1:Nr) {
+    s <- sample(1:Ns,2)
+    mr[s[1],i] <- 1
+    mp[s[2],i] <- 1
+  }
+  # (3) assignment of species not used as reactants to a random reaction (eventually the same reaction)
+  s <- which(rowSums(mr)==0) # species not used as reactants
+  r <- sample(1:Nr,length(s),replace=T)
+  if (length(s)>0) for (i in 1:length(s)) mr[s[i],r[i]] <- mr[s[i],r[i]] + 1
+  # (4) assignment of species not used as products to a random reaction (eventually the same reaction)
+  s <- which(rowSums(mp)==0) # species not used as products
+  r <- sample(1:Nr,length(s),replace=T)
+  if (length(s)>0) for (i in 1:length(s)) mp[s[i],r[i]] <- mp[s[i],r[i]] + 1
+  # (5) extra assignment of species at random
+  n <- round((sum(mr)+sum(mp))*extra)  # extra assignments are proportional to minimal assignments
+  if (n>0) {
+    s <- sample(sample(1:Ns,n,replace=T)) # the selected species (with repetitions)
+    r <- sample(sample(1:Nr,n,replace=T)) # the selected reactions (with repetitions)
+    k <- sample(c(-1,1),n,replace=T) # which side mr (-1) or mp (1)
+    for (i in 1:n)
+      if (k[i]==-1) mr[s[i],r[i]] <- mr[s[i],r[i]] + 1
+      else mp[s[i],r[i]] <- mp[s[i],r[i]] + 1
+  }
+  return(list(mr=mr,mp=mp))
+}
+
+# generation of a reaction pattern (pair of complexes)
+# parameters: Sr number of reactants species, Mr total added mass of reactants, Sp and Mp the same for products
+# if the mass is less than the number of species it will be set equal
+rg.pgen <- function(Sr,Mr,Sp,Mp) {
+  rp <- list(r=rep(1,Sr),p=rep(1,Sp))
+  if (Sr>0 & Mr>Sr) for (k in sample(Sr,Mr-Sr,replace=T)) rp$r[k] <- rp$r[k] + 1
+  if (Sp>0 & Mp>Sp) for (k in sample(Sp,Mp-Sp,replace=T)) rp$p[k] <- rp$p[k] + 1
+  return(rp)
+} 
+
+# basic generator of a reaction network: Nr reactions, Rs number of species for reactants and products (range),
+# Rm mass multiplier (range), dsf different species factor
+# ranges are sampled uniformly
+# The resulting reaction network may contain redundant or null reactions (rn.merge will filter them out)
+rg.bg <- function(Nr=100,Rs=1:3,Rm=c(1,2),dsf=.3) {
+  # (1) generation of Nr reaction patterns
+  R <- NULL # reactions matrix, initially NULL, one column per used species
+            # three rows: reaction index, reactant/product indicator (-1/1), cardinality
+  for (i in 1:Nr) {
+    repeat {
+      Sr <- if (length(Rs)==1) Rs else sample(Rs,1)
+      Sp <- if (length(Rs)==1) Rs else sample(Rs,1)
+      if (Sr!=0 || Sp!=0) break  # Sr and Sp are not allowed to be simultaneously 0
+    }
+    Mr <- round(Sr*runif(1,Rm[1],Rm[2])) 
+    Mp <- round(Sp*runif(1,Rm[1],Rm[2]))
+    rp <- rg.pgen(Sr,Mr,Sp,Mp)
+    R <- cbind(R,rbind(rep(i,length(rp$r)+length(rp$p)),c(rep(-1,length(rp$r)),rep(1,length(rp$p))),c(rp$r,rp$p)))
+  }
+  # (2) creation and assignation of different original species according to dsf parameter
+  Ns <- 0 # number of different species created, initially 0
+  R <- rbind(R,0) # a fourth row is added to assign species, initially no species assigned (indicated by 0)
+  for (i in 1:ncol(R)) if (runif(1)<dsf) {
+    Ns <- Ns + 1
+    R[4,i] <- Ns
+  }
+  # (3) assignation of missing species using the created ones
+  for (i in which(R[4,]==0)) {
+    us <- setdiff(1:Ns, R[4, R[1,]==R[1,i] & R[2,]==R[2,i]]) # usable species (no repetitions in the same complex)
+    if (length(us)==0) { Ns <- Ns + 1; R[4,i] <- Ns } # in case no species is available a new one is created
+    else R[4,i] <- if (length(us)==1) us else sample(us,1)
+  }
+  # (4) creation of the reactants and products matrices of the reaction network
+  mr <- mp <- matrix(0,Ns,Nr,dimnames=list(paste0("s",1:Ns),paste0("r",1:Nr)))
+  for (i in 1:ncol(R)) {
+    if (R[2,i]==-1) mr[R[4,i],R[1,i]] <- R[3,i]
+    else mp[R[4,i],R[1,i]] <- R[3,i]
+  }
+  return(list(mr=mr,mp=mp))
+}
+
+# generator of basic reaction networks with Nr reactions, species S with distribution D, lengths L with distribution Dl
+rg.brn0 <- function(Nr=20,S=paste0("s",1:Nr),Ds=rep(1,length(S)),L=1:3,Dl=rep(1,length(L))) {
+  mr <- mp <- matrix(0,length(S),Nr,dimnames=list(S,paste0("r",1:Nr)))
+  dupl <- function(m,i) which(sapply(1:(i-1),function(j) all(m[,j]==m[,i])))
+  gen <- function() {
+    lr <- sample(L,1,prob=Dl) # number of reactants
+    lp <- sample(L,1,prob=Dl) # number of products
+    r <- sort(sample(S,lr,replace=T,prob=Ds)) # reactants (with repetitions)
+    p <- sort(sample(S,lp,replace=T,prob=Ds)) # products (with repetitions)
+    if (length(r)==length(p) && all(r==p)) gen() # if the reaction is null we try again
+    else return(list(r=r,p=p))
+  }
+  g <- gen()
+  for (s in g$r) mr[s,1] <- mr[s,1]+1
+  for (s in g$p) mp[s,1] <- mp[s,1]+1
+  for (i in 2:Nr) {
+    repeat {
+      g <- gen()
+      for (s in g$r) mr[s,i] <- mr[s,i]+1
+      for (s in g$p) mp[s,i] <- mp[s,i]+1
+      if (length(intersect(dupl(mr,i),dupl(mp,i)))==0) break  # ok if no redundant reaction
+      mr[g$s,i] <- 0; mp[g$s,i] <- 0 # the reaction was redundant, the columns are cleared
+    }
+  }
+  j <- which(rowSums(mr+mp)>0)  # used species
+  return(list(mr=mr[j,],mp=mp[j,]))
+}
+
 # shift left a vector preserving the last element
 rg.shl <- function(v) c(v[-1],v[length(v)])
 
