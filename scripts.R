@@ -9,7 +9,9 @@
 # rg.R (random generation of reaction networks)
 # rn.R (structural analysis and manipulation of reaction networks including linear programming)
 # sm.R (dynamical simulation of reaction networks)
+# pert.R (state and flow perturbations)
 # ev.R (evolution potential of reaction networks calculated using many dynamical simulations of random perturbations)
+
 
 source("ev.R")  # all other R files are loaded by ev.R
 
@@ -223,3 +225,38 @@ scr.evol2 <- function(e=globalenv()$e, rn = if (!is.null(e)) e$rn else scr.genrm
   
 }
 
+# working script to generate a random reaction network and sequentially perturbate it and simulate its dynamics
+# if e is provided new perturbations are concatenated to e
+# if rn is provided that reaction network is used instead of generating a random one
+# by default the number of perturbation and simulation steps l is set to 10
+# the result is available in global variable e (the value is also returned by the function)
+scr.gen_and_pert <- function(e=NULL,rn=NULL,l=10) {
+  if (is.null(e)) {
+    if (is.null(rn)) {
+      rn <- rg.g1(Nr=100,Ns=100,extra=.5) # random reaction network with Nr reactions, Ns species, .5 extra species
+      rn <- rn.merge(rn) # null or redundant reactions are filtered out
+    }
+    e <- pert.start(rn) # the starting point of evolution
+  }
+  for (i in 1:l) {
+    e <- pert.apply(e,"s",pert.delta,d=1,nmin=1,sigma=.5) # a delta perturbation is applied to species concentrations
+    e <- pert.simul(e,cutoff=.1,n=5000) # the perturbed state is simulated
+  }
+  e <<- e
+}
+
+# generates n random walks of l steps and stores each random walk in a file
+scr.random_walk <- function(n=10,l=100,file="rndw") {
+  if (n>0) for (i in 1:n) {
+    if (n==1) scr.gen_and_pert(l=l) # first random walk, the result is stored in variable e
+    else scr.gen_and_pert(rn=e$rn,l=l) # a random walk with the same rn but different starting point and flow vector
+    save(e,file=paste0(file,i)) # the variable e is stored in files rndw1, rndw2, etc. according to index i
+  }
+}
+
+# retrieves a random walk and shows its abstract end states
+scr.retrieve <- function(i=1,file="rndw") {
+  load(paste0(file,i)) # retrieve variable e from file
+  m <- pert.abstract(e)
+  mgg.img(m,zlim=c(0,1))
+}

@@ -1,6 +1,7 @@
 
 source("mgg.R")
 source("sm.R")
+source("pert.R")
 
 # distribution functions for the size of generated perturbations (n is the maximum perturbation size)
 ev.Pexp <- function(n) exp(-(1:n))

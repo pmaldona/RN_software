@@ -244,10 +244,11 @@ rn.recard <- function(rn,Rm=c(1,2),mcf=0) {
 }
 
 # returns the species (index) that belong to the closure of a set of species s (index) of a reaction network rn
-rn.closure <- function(rn,s) {
+# a is the set of active reactions (defaults to all reactions)
+rn.closure <- function(rn,s,a=1:nrow(rn$mr)) {
   repeat {
-    r <- which(colSums(rn$mr)==colSums(rn$mr[s,,drop=F])) # triggered reactions
-    ns <- which(rowSums(rn$mp[,r,drop=F])>0) # species produced by triggered reactions
+    r <- which(colSums(rn$mr[,a,drop=F])==colSums(rn$mr[s,a,drop=F])) # triggered reactions
+    ns <- which(rowSums(rn$mp[,a[r],drop=F])>0) # species produced by triggered reactions
     l <- length(s)
     s <- union(s,ns)
     if (length(s)==l) break # nothing new

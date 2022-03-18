@@ -113,9 +113,9 @@ sm.maksim <- function(rn,n=1000,dt=.2,s0=runif(nrow(rn$mr),.9,1.1),p=runif(ncol(
     cs[] <- s[,i] > e
     sa[,i] <- cs
     k.s <- which(cs) # currently available species
-    k.r <- which(rbind(cs==F) %*% rn$mr == 0) # reactions with all reactants available
+    k.r <- which(rbind(cs==F) %*% rn$mr == 0 & p>0) # reactions with all reactants available and positive constant
     if (length(k.r)==0) break  # we have reached a non reactive end state, nothing more to simulate...
-    lv <- rbind(log(s[k.s,i])) %*% rn$mr[k.s,k.r]  # the flow vector in logarithmic scale
+    lv <- log(p[k.r]) + rbind(log(s[k.s,i])) %*% rn$mr[k.s,k.r]  # the flow vector in logarithmic scale
     mlv <- max(lv)  # normalization factor for flow vector and time unit
     v[k.r,i] <- exp(lv-mlv)  # normalized flow vector (maximum component is 1)
   }
