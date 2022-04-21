@@ -3,7 +3,7 @@
 # Example scripts for using the software #
 ##########################################
 
-# packages needed: limSolve, ggplot2, reshape2, cowplot, magrittr, viridisLite
+# packages needed: limSolve, ggplot2, reshape2, cowplot, magrittr, viridisLite, jsonlite
 
 # R files to be loaded:
 # rg.R (random generation of reaction networks)
@@ -12,6 +12,7 @@
 # pert.R (state and flow perturbations)
 # ev.R (evolution potential of reaction networks calculated using many dynamical simulations of random perturbations)
 
+library("jsonlite")
 
 source("ev.R")  # all other R files are loaded by ev.R
 
@@ -225,38 +226,74 @@ scr.evol2 <- function(e=globalenv()$e, rn = if (!is.null(e)) e$rn else scr.genrm
   
 }
 
-# working script to generate a random reaction network and sequentially perturbate it and simulate its dynamics
-# if e is provided new perturbations are concatenated to e
+# working script to generate a random reaction network and perturbation/simulation random walks
+# if e is provided new random walks or steps are added to e
 # if rn is provided that reaction network is used instead of generating a random one
+# the random walks to be created or completed are defined by range w, by default 1:10
 # by default the number of perturbation and simulation steps l is set to 10
+# cutoff is the concentration threshold for a species to be reactive and n is the number of simulation steps 
 # the result is available in global variable e (the value is also returned by the function)
-scr.gen_and_pert <- function(e=NULL,rn=NULL,l=10) {
+scr.gen_and_pert <- function(e=NULL,rn=NULL,w=1:10,l=10,cutoff=.1,n=5000) {
   if (is.null(e)) {
     if (is.null(rn)) {
       rn <- rg.g1(Nr=100,Ns=100,extra=.5) # random reaction network with Nr reactions, Ns species, .5 extra species
       rn <- rn.merge(rn) # null or redundant reactions are filtered out
     }
-    e <- pert.start(rn) # the starting point of evolution
+    e <- pert.start(rn) # the starting structure to store the random walks to be generated
   }
-  for (i in 1:l) {
-    e <- pert.apply(e,"s",pert.delta,d=1,nmin=1,sigma=.5) # a delta perturbation is applied to species concentrations
-    e <- pert.simul(e,cutoff=.1,n=5000) # the perturbed state is simulated
+  for (i in w) { # for each random walk
+    print(i)
+    if (i>length(e$rw)) # this is a new random walk
+      e$rw[[i]] <- list(f=NULL,s=NULL,p=NULL,c=NULL,a=NULL,u=NULL) # matrices are created to store the steps in columns
+    if (is.null(e$rw[[i]]$f)) { # this is a void random walk (0 steps)
+      s <- e$rn$mr[,1]*0 # the current state is zeroed
+      f <- pert.randomize(e$rn$mr[1,]*0 + 1) # the flow vector is randomized (each random walk has a different f)
+    }
+    else { # this is a random walk with a number of steps already accumulated
+      j <- ncol(e$rw[[i]]$c)  # the number of steps up to now
+      s <- e$rw[[i]]$c[,j] # the exploration continues from the last convergence state in the random walk
+      f <- e$rw[[i]]$f[,j] # the last flow vector is conserved
+    }
+    for (j in 1:l) { # for each j step in random walk i
+      s <- s*(s>cutoff) # species of the current state under the cutoff threshold are zeroed
+      if (all(s>0)) break # no more species to add... the random walk has finished before the l step
+      e$rw[[i]]$s <- cbind(e$rw[[i]]$s,unname(s)) # the current state is stored in the random walk
+      # start perturbations:
+      s <- pert.delta(s,d=1,nmin=1,sigma=.5) # a delta perturbation is applied to current state
+      # end perturbations, start simulation:
+      cs <- pert.simul(e$rn,s,f,cutoff=cutoff,n=n) # the perturbed state is simulated reaching a convergence state
+      # end simulation
+      e$rw[[i]]$f <- cbind(e$rw[[i]]$f,unname(f)) # the flow vector is stored in the random walk
+      e$rw[[i]]$p <- cbind(e$rw[[i]]$p,unname(s)) # the perturbed current state is stored in the random walk
+      if (is.null(cs)) cs <- s # if something went wrong with the simulation, we just keep the initial current estate
+      e$rw[[i]]$c <- cbind(e$rw[[i]]$c,unname(cs)) # the convergent state is stored in the random walk
+      a <- pert.abstract(e$rn,cs,f,cutoff=cutoff) # boolean abstraction of the convergent state (closure)
+      e$rw[[i]]$a <- cbind(e$rw[[i]]$a,unname(a+0)) # the abstraction is stored
+      e$rw[[i]]$u <- cbind(e$rw[[i]]$u,pert.used(e$rn,a,f)+0) # a second abstraction is stored (used species)
+      s <- cs # the new current state is the convergent state
+    }
   }
   e <<- e
 }
 
-# generates n random walks of l steps and stores each random walk in a file
-scr.random_walk <- function(n=10,l=100,file="rndw") {
-  if (n>0) for (i in 1:n) {
-    if (n==1) scr.gen_and_pert(l=l) # first random walk, the result is stored in variable e
-    else scr.gen_and_pert(rn=e$rn,l=l) # a random walk with the same rn but different starting point and flow vector
-    save(e,file=paste0(file,i)) # the variable e is stored in files rndw1, rndw2, etc. according to index i
-  }
+# saves variable e in json format into a file
+scr.save <- function(file="rw.json") {
+  write(toJSON(e,digits=NA),file)
 }
 
-# retrieves a random walk and shows its abstract end states
-scr.retrieve <- function(i=1,file="rndw") {
-  load(paste0(file,i)) # retrieve variable e from file
-  m <- pert.abstract(e)
-  mgg.img(m,zlim=c(0,1))
+# loads a json file and deparses it into variable e and returns it
+scr.load <- function(file="rw.json") {
+  e <- fromJSON(file,simplifyDataFrame=F)
+  rownames(e$rn$mr) <- rownames(e$rn$mp) <- e$species
+  colnames(e$rn$mr) <- colnames(e$rn$mp) <- e$reactions
+  e <<- e
+}
+
+# generates n random walks of l steps and stores each random walk in a file
+scr.random_walk <- function(n=10,file="rndw") {
+  if (n>0) for (i in 1:n) {
+    rn <- sm.genrn(12) # a new random network
+    scr.gen_and_pert(rn=rn,w=1:10,l=10,cutoff=.1,n=5000) # a random walk for rn
+    scr.save(file=paste0(file,i,".json")) # result stored in files rndw1.json, rndw2.json, etc. according to index i
+  }
 }
