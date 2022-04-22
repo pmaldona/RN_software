@@ -256,6 +256,15 @@ rn.closure <- function(rn,s,a=1:nrow(rn$mr)) {
   return(sort(s))
 }
 
+# returns used species (consumed or produced by some triggered reaction) for a reaction network rn
+# a set of species s (index) and a set of active reactions a (defaults to all reactions)
+rn.used <- function(rn,s,a=1:nrow(rn$mr)) {
+  r <- which(colSums(rn$mr[,a,drop=F])==colSums(rn$mr[s,a,drop=F])) # triggered reactions
+  cs <- which(rowSums(rn$mr[,a[r],drop=F])>0) # species consumed by triggered reactions
+  ps <- which(rowSums(rn$mp[,a[r],drop=F])>0) # species produced by triggered reactions
+  return(sort(union(cs,ps)))
+}
+
 # returns a sub-network of a reaction network nr by closing the set of species s, unreactive species are trimmed
 rn.close <- function(rn,s) {
   repeat {
