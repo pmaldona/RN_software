@@ -289,11 +289,54 @@ scr.load <- function(file="rw.json") {
   e <<- e
 }
 
-# generates n random walks of l steps and stores each random walk in a file
+# generates n random walks and stores each random walk in a file
 scr.random_walk <- function(n=10,file="rndw") {
   if (n>0) for (i in 1:n) {
     rn <- sm.genrn(12) # a new random network
     scr.gen_and_pert(rn=rn,w=1:10,l=10,cutoff=.1,n=5000) # a random walk for rn
     scr.save(file=paste0(file,i,".json")) # result stored in files rndw1.json, rndw2.json, etc. according to index i
+  }
+}
+
+# generates a dataframe of combinations of parameters, N tests for each combination,
+#  w number of random walks, l number of steps, n dynamic simulation iterations
+# nr number of reactions, ns number of species (some random network generators don't use ns)
+# an identifier id for reaction networks is created (same id, same reaction network)
+scr.pcomb <- function(w=100,l=100,n=c(1000,2500,5000),rn=cbind(nr=c(50,100,250),ns=c(50,100,250)),N=1:5) {
+  d <- data.frame(w)
+  d <- merge(d,data.frame(l))
+  d <- merge(d,data.frame(n))
+  d <- merge(d,as.data.frame(rn))
+  d <- merge(d,data.frame(N))
+  d$id <- 1:nrow(d)
+  return(d)
+}
+
+# generates a list of reactions networks according to parameters in dataframe p
+# if the same identity is used several times, the first occurrence in p is the defining one
+scr.pcomb.genr <- function(p,rng=1) {
+  rngen <- function(nr,ns,rng) {  # generates a random network using generator rng
+    if (rng==1) {
+      rn <- sm.genrn(nr)
+    }
+    else if (rng==2) {
+      rn <- rg.g1(Nr=nr,Ns=ns,extra=.5)
+      rn <- rn.merge(rn) # null or redundant reactions are filtered out
+    }
+  }
+  u <- unique(p$id) # the unique identities of reaction networks to be used
+  rnl <- lapply(match(u,p$id), function(i) rngen(p$nr[i],p$ns[i],rng))
+  names(rnl) <- u
+  return(rnl)
+}
+
+# batch function to create random walks according to parameters in dataframe p
+scr.batch <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p),name="batch") {
+  p$time <- 0
+  for (i in 1:ncol(p)) {
+    st <- system.time(scr.gen_and_pert(rn=rnl[[p$id[i]]],w=1:p$w[i],l=p$l[i],cutoff=.1,n=p$n[i]))
+    p$time[i] <- st[1]
+    scr.save(file=sprintf("%s%04i.json",name,i))
+    write.csv(p,paste0(name,".csv"),row.names=F)
   }
 }
