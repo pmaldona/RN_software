@@ -242,7 +242,6 @@ scr.gen_and_pert <- function(e=NULL,rn=NULL,w=1:10,l=10,cutoff=.1,n=5000) {
     e <- pert.start(rn) # the starting structure to store the random walks to be generated
   }
   for (i in w) { # for each random walk
-    print(i)
     if (i>length(e$rw)) # this is a new random walk
       e$rw[[i]] <- list(f=NULL,s=NULL,p=NULL,c=NULL,a=NULL,u=NULL) # matrices are created to store the steps in columns
     if (is.null(e$rw[[i]]$f)) { # this is a void random walk (0 steps)
@@ -298,17 +297,14 @@ scr.random_walk <- function(n=10,file="rndw") {
   }
 }
 
-# generates a dataframe of combinations of parameters, N tests for each combination,
-#  w number of random walks, l number of steps, n dynamic simulation iterations
-# nr number of reactions, ns number of species (some random network generators don't use ns)
-# an identifier id for reaction networks is created (same id, same reaction network)
-scr.pcomb <- function(w=100,l=100,n=c(1000,2500,5000),rn=cbind(nr=c(50,100,250),ns=c(50,100,250)),N=1:5) {
-  d <- data.frame(w)
-  d <- merge(d,data.frame(l))
-  d <- merge(d,data.frame(n))
-  d <- merge(d,as.data.frame(rn))
+# generates a dataframe of combinations of parameters
+# reaction networks: nr number of reactions, ns number of species, w random walks of l steps, N different tries
+# conditions: n simulation iterations with the same reaction networks
+scr.pcomb <- function(rn=cbind(nr=c(50,100,250),ns=c(50,100,250),w=100,l=100),N=1:5,n=c(1000,2500,5000)) {
+  d <- data.frame(rn)
   d <- merge(d,data.frame(N))
   d$id <- 1:nrow(d)
+  d <- merge(d,data.frame(cbind(n=n,cond=1:length(n))))
   return(d)
 }
 
@@ -331,12 +327,19 @@ scr.pcomb.genr <- function(p,rng=1) {
 }
 
 # batch function to create random walks according to parameters in dataframe p
-scr.batch <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p),name="batch") {
-  p$time <- 0
-  for (i in 1:ncol(p)) {
+scr.batch <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,1),name="batch") {
+  d <- cbind(id=1:length(rnl),t(sapply(rnl,function(e) c(gnr=ncol(e$mr),gns=nrow(e$mr)))))
+  p <- merge(p,as.data.frame(d),by="id")
+  for (i in 1:nrow(p)) {
     st <- system.time(scr.gen_and_pert(rn=rnl[[p$id[i]]],w=1:p$w[i],l=p$l[i],cutoff=.1,n=p$n[i]))
-    p$time[i] <- st[1]
-    scr.save(file=sprintf("%s%04i.json",name,i))
-    write.csv(p,paste0(name,".csv"),row.names=F)
+    d <- data.frame(id=p$id[i],cond=p$cond[i],time=st[1])
+    write.csv(d,sprintf("%s%04i_%02i.csv",name,p$id[i],p$cond[i]),row.names=F)
+    scr.save(file=sprintf("%s%04i_%02i.json",name,p$id[i],p$cond[i]))
   }
+  p$time <- 0
+  for (i in 1:nrow(p)) {
+    d <- read.csv(sprintf("%s%04i_%02i.csv",name,p$id[i],p$cond[i]))
+    p$time[i] <- d$time
+  }
+  write.csv(p,sprintf("%s.csv",name),row.names=F)
 }
