@@ -243,7 +243,7 @@ scr.gen_and_pert <- function(e=NULL,rn=NULL,w=1:10,l=10,cutoff=.1,n=5000) {
   }
   for (i in w) { # for each random walk
     if (i>length(e$rw)) # this is a new random walk
-      e$rw[[i]] <- list(f=NULL,s=NULL,p=NULL,c=NULL,a=NULL,u=NULL) # matrices are created to store the steps in columns
+      e$rw[[i]] <- list(t=NULL,f=NULL,s=NULL,p=NULL,c=NULL,a=NULL,u=NULL) # matrices are created to store the steps in columns
     if (is.null(e$rw[[i]]$f)) { # this is a void random walk (0 steps)
       s <- e$rn$mr[,1]*0 # the current state is zeroed
       f <- pert.randomize(e$rn$mr[1,]*0 + 1) # the flow vector is randomized (each random walk has a different f)
@@ -255,13 +255,17 @@ scr.gen_and_pert <- function(e=NULL,rn=NULL,w=1:10,l=10,cutoff=.1,n=5000) {
     }
     for (j in 1:l) { # for each j step in random walk i
       s <- s*(s>cutoff) # species of the current state under the cutoff threshold are zeroed
-      if (all(s>0)) break # no more species to add... the random walk has finished before the l step
+      # if (all(s>0)) break # no more species to add... the random walk has finished before the l step
       e$rw[[i]]$s <- cbind(e$rw[[i]]$s,unname(s)) # the current state is stored in the random walk
       # start perturbations:
       s <- pert.delta(s,d=1,nmin=1,sigma=.5) # a delta perturbation is applied to current state
       # end perturbations, start simulation:
-      cs <- pert.simul(e$rn,s,f,cutoff=cutoff,n=n) # the perturbed state is simulated reaching a convergence state
+      st <- system.time(
+        cs <- pert.simul(e$rn,s,f,cutoff=cutoff,n=n), # the perturbed state is simulated reaching a convergence state
+        gcFirst = FALSE
+      )
       # end simulation
+      e$rw[[i]]$t <- c(e$rw[[i]]$t,st[1]) # the time elapsed in the dynamic simulation is stored in the random walk
       e$rw[[i]]$f <- cbind(e$rw[[i]]$f,unname(f)) # the flow vector is stored in the random walk
       e$rw[[i]]$p <- cbind(e$rw[[i]]$p,unname(s)) # the perturbed current state is stored in the random walk
       if (is.null(cs)) cs <- s # if something went wrong with the simulation, we just keep the initial current estate
