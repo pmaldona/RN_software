@@ -278,7 +278,7 @@ sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {
   if (!is.null(rn$sid)) cat("final state:",rn$sid[sm.final(rn,sm)],"\n")
   else cat("final state:",sm.final(rn,sm),"\n")
   gc()
-  g <- sm.display(sm)
+  g <- sm.display(sm,simple=T)
   print(g)
   Sys.sleep(1)
 }

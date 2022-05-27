@@ -317,9 +317,15 @@ scr.pcomb <- function(rn=cbind(nr=c(50,100,250),ns=c(50,100,250),w=100,l=100),N=
 scr.pcomb.genr <- function(p,rng=1) {
   rngen <- function(nr,ns,rng) {  # generates a random network using generator rng
     if (rng==1) {
-      rn <- sm.genrn(nr)
+      patterns <- rbind( c(1,0,0,0,1,10),  # creation
+                         c(1,0,0,1,1,80),  # transformation
+                         c(1,0,0,1,0,10) ) # destruction
+      rn <- rg.rn(Nr=nr,S=paste0("s",1:ns),C=1, P = function() rg.rsrt(patterns))
     }
     else if (rng==2) {
+      rn <- sm.genrn(nr)
+    }
+    else if (rng==3) {
       rn <- rg.g1(Nr=nr,Ns=ns,extra=.5)
       rn <- rn.merge(rn) # null or redundant reactions are filtered out
     }

@@ -245,7 +245,7 @@ rn.recard <- function(rn,Rm=c(1,2),mcf=0) {
 
 # returns the species (index) that belong to the closure of a set of species s (index) of a reaction network rn
 # a is the set of active reactions (defaults to all reactions)
-rn.closure <- function(rn,s,a=1:nrow(rn$mr)) {
+rn.closure <- function(rn,s,a=1:ncol(rn$mr)) {
   repeat {
     r <- which(colSums(rn$mr[,a,drop=F])==colSums(rn$mr[s,a,drop=F])) # triggered reactions
     ns <- which(rowSums(rn$mp[,a[r],drop=F])>0) # species produced by triggered reactions
@@ -258,7 +258,7 @@ rn.closure <- function(rn,s,a=1:nrow(rn$mr)) {
 
 # returns used species (consumed or produced by some triggered reaction) for a reaction network rn
 # a set of species s (index) and a set of active reactions a (defaults to all reactions)
-rn.used <- function(rn,s,a=1:nrow(rn$mr)) {
+rn.used <- function(rn,s,a=1:ncol(rn$mr)) {
   r <- which(colSums(rn$mr[,a,drop=F])==colSums(rn$mr[s,a,drop=F])) # triggered reactions
   cs <- which(rowSums(rn$mr[,a[r],drop=F])>0) # species consumed by triggered reactions
   ps <- which(rowSums(rn$mp[,a[r],drop=F])>0) # species produced by triggered reactions
