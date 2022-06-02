@@ -13,7 +13,7 @@
 # ev.R (evolution potential of reaction networks calculated using many dynamical simulations of random perturbations)
 
 library("jsonlite")
-
+library("parallel")
 source("ev.R")  # all other R files are loaded by ev.R
 
 #-----------------------------------------------------------------------------
@@ -346,6 +346,28 @@ scr.batch <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,1),name="batch") {
     write.csv(d,sprintf("%s%04i_%02i.csv",name,p$id[i],p$cond[i]),row.names=F)
     scr.save(file=sprintf("%s%04i_%02i.json",name,p$id[i],p$cond[i]))
   }
+  p$time <- 0
+  for (i in 1:nrow(p)) {
+    d <- read.csv(sprintf("%s%04i_%02i.csv",name,p$id[i],p$cond[i]))
+    p$time[i] <- d$time
+  }
+  write.csv(p,sprintf("%s.csv",name),row.names=F)
+}
+
+# batch function to create random walks according to parameters in dataframe p
+scr.batch.parallel <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,1),name="batch") {
+  d <- cbind(id=1:length(rnl),t(sapply(rnl,function(e) c(gnr=ncol(e$mr),gns=nrow(e$mr)))))
+  p <- merge(p,as.data.frame(d),by="id")
+  p_list <- split(p,1:nrow(p))
+  
+  int.batch <- function(param,name,rnl){
+    st <- system.time(scr.gen_and_pert(rn=rnl[[param$id]],w=1:param$w,l=param$l,cutoff=.1,n=param$n))
+    d <- data.frame(id=param$id,cond=param$cond,time=st[1])
+    print(d)
+    write.csv(d,sprintf("%s%04i_%02i.csv",name,param$id,param$cond),row.names=F)
+    scr.save(file=sprintf("%s%04i_%02i.json",name,param$id,param$cond))
+  }
+  mclapply(p_list,FUN = function(x){int.batch(x,name,rnl)},mc.cores = 24, mc.preschedule = T)
   p$time <- 0
   for (i in 1:nrow(p)) {
     d <- read.csv(sprintf("%s%04i_%02i.csv",name,p$id[i],p$cond[i]))
