@@ -112,7 +112,10 @@ rn.merge <- function(...) {
     nc1 <- ncol(mr1); if (is.null(nc1)) nc1 <- 0
     mr2 <- ...elt(i)$mr; mp2 <- ...elt(i)$mp; sid2 <- rownames(mr2)
     nc2 <- ncol(mr2); if (is.null(nc2)) nc2 <- 0
-    sid <- sort(union(sid1,sid2))
+    sid <- union(sid1,sid2)
+    o <- order( paste0( sub("([^0-9]*)([0-9]+$)","\\1",sid),
+                        sprintf("%9s",sub("([^0-9]*)([0-9]+$)","\\2",sid)) ))
+    sid <- sid[o]
     mr <- matrix(0,length(sid),nc1+nc2)
     rownames(mr) <- sid
     mp <- mr
@@ -326,7 +329,7 @@ rn.linp_org <- function(rn,w=NULL,inflow=NULL,destruct=F) {
   # them if destruction reactions have positive rate). In that case the reaction network is a proper organization.
   # If not it can be converted into one by adding the extra inflow of species with creation rate > 0.
   # Returns the indexes of species needed as extra inflow and overproduced species in the particular solution found.
-  return(list(ifl=which(rn.linp.r$X[1:Ns]>0),ovp=which(rn.linp.r$X[Ns+1:Ns]>0)))
+  return(list(ifl=which(rn.linp.r$X[1:Ns]>0),ovp=which(rn.linp.r$X[Ns+1:Ns]>0),v=rn.linp.r$X[1:Ns]))
 }
 
 # verifies which species s (index set) of a reaction network rn (not necessarily an organization) are overproducible
@@ -356,6 +359,49 @@ rn.overprod <- function(rn,s=1:nrow(rn$mr),inflow=integer(0)) {
     S[p,p] <- -1; f[p] <- 0; Cost[p] <- 0  # original destruction reaction and zero values for next iteration
   }
   return(which(o))
+}
+
+# verifies that a reaction network is an organization
+# returns a vector of reaction rates (rates of inverted reactions should be 0 for an organization)
+rn.linp_org_reac <- function(rn) {
+  Ns <- nrow(rn$mr)  # number of species (rows)
+  Nr <- ncol(rn$mr)  # number of reactions (columns)
+  S <- cbind(rn$mr-rn$mp,-diag(Ns),rn$mp-rn$mr) # stoichiometric matrix of rn with prepended inverted and destruction reactions 
+  f <- rep(0,Ns) # production of every species = 0, always possible because of additional reactions
+  h <- c(rep(0,Nr+Ns),rep(1,Nr)) # original reactions with rate>=1 (any positive), prepended reactions with rate>=0
+  Cost <- rep(0,ncol(S)) # cost of processes is 0...
+  Cost[1:Nr] <- 1 # except for inverted reactions to be minimized
+  rn.linp.r <<- linp(E=S,f,G=diag(Nr+Ns+Nr),h,Cost)
+  # The unknown to be solved is the process column vector v = [vi,vd,vo] (inverted/destruction/original network).
+  # The result for v is stored in the variable rn.linp.r$X (vi is X[1:Nr]).
+  # The equations are S v = f (with f=0), G v >= h (i.e. [vi,vd,vo] >= [0,0,1] because G is the identity matrix).
+  # Only the original network reactions are constrained to be strictly positive (here arbitrarily vo >= 1).
+  # The cost is  Cost . vi  (dot product).
+  # The linear programming ideal result is every prepended inverted reaction with rate 0 (minimal Cost 0).
+  # It implies that there is at least one original process vector that can sustain every species (and even increase
+  # them if destruction reactions have positive rate). In that case the reaction network is a proper organization.
+  return(rn.linp.r$X)
+}
+
+# transforms a reaction network into an organization by flipping or deleting some reactions
+rn.organize <- function(rn,verbose=T) {
+  repeat {
+    Ns <- nrow(rn$mr)  # number of species (rows)
+    Nr <- ncol(rn$mr)  # number of reactions (columns)
+    v <- rn.linp_org_reac(rn)
+    w <- zapsmall(v[Nr+Ns+1:Nr]-v[1:Nr])
+    k <- which.min(w)
+    if (w[k]>=0) {
+      k <- which(w==0)
+      if (length(k)>0) { if (verbose) cat("delete",names(w[k]),"\n"); rn$mr <- rn$mr[,-k]; rn$mp <- rn$mp[,-k] }
+      return(rn)
+    }
+    else
+      if (verbose) cat("invert",names(w[k]),"\n")
+    f <- rn$mr[,k]
+    rn$mr[,k] <- rn$mp[,k]
+    rn$mp[,k] <- f
+  }
 }
 
 # production connections between species within a reaction network rn

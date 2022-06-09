@@ -5,32 +5,49 @@
 # a minimal reaction network is randomly created where each reaction has one reactant and one product and each species
 # is used at least once as reactant and once as product, an extra proportion of assignments are carried out randomly
 # there are no inflow or outflow reactions, redundant or null reactions may be generated (rn.merge will filter them out)
-rg.g1 <- function(Nr=12,Ns=Nr,extra=.5) {
+# dist is a log scaled distribution in the [-1,1] range representing locality
+# pr and pp are a log scaled penalization for the repeated use of species as reactants or products 
+rg.g1 <- function(Nr=12,Ns=Nr,extra=.2, dist=function(x) 1, pr=0, pp=0) {
+  # (0) useful variables and functions
+  xr <- (0:(Nr-1))/(Nr-1)*2-1  # x coordinates for reactions, range [-1,1]
+  xs <- (0:(Ns-1))/(Ns-1)*2-1  # x coordinates for species, range [-1,1]
+  rnorm <- function(x) x + 2*(x < -1) - 2*(x > 1) # renormalization of coordinates in the range [-1,1]
+  usr <- usp <- integer(Ns) # int vectors to count uses of species as reactants and products (initially the counts are 0)
   # (1) creation of the reactants and products Ns X Nr matrices of the reaction network with no species assigned
   mr <- mp <- matrix(0,Ns,Nr,dimnames=list(paste0("s",1:Ns),paste0("r",1:Nr)))
   # (2) assignment of one random reactant and one random product (different from the reactant) to each reaction
-  for (i in 1:Nr) {
-    s <- sample(1:Ns,2)
-    mr[s[1],i] <- 1
-    mp[s[2],i] <- 1
+  for (i in sample(Nr,Nr)) {
+    d <- dist(rnorm(xs-xr[i]))
+    dr <- d - pr*usr; dr <- exp(dr-max(dr))
+    sr <- sample(Ns,1,prob=dr)
+    dp <- d - pp*usp; dp[sr] <- -Inf; dp <- exp(dp-max(dp))
+    sp <- sample(Ns,1,prob=dp)
+    mr[sr,i] <- 1; usr[sr] <- usr[sr]+1
+    mp[sp,i] <- 1; usp[sp] <- usp[sp]+1
   }
   # (3) assignment of species not used as reactants to a random reaction (eventually the same reaction)
-  s <- which(rowSums(mr)==0) # species not used as reactants
-  r <- sample(1:Nr,length(s),replace=T)
-  if (length(s)>0) for (i in 1:length(s)) mr[s[i],r[i]] <- mr[s[i],r[i]] + 1
+  i <- which(usr==0)
+  for (s in sample(i,length(i))) {
+    d <- dist(rnorm(xr-xs[s]))
+    r <- sample(Nr,1,prob=exp(d))
+    mr[s,r] <- mr[s,r] + 1
+  }
   # (4) assignment of species not used as products to a random reaction (eventually the same reaction)
-  s <- which(rowSums(mp)==0) # species not used as products
-  r <- sample(1:Nr,length(s),replace=T)
-  if (length(s)>0) for (i in 1:length(s)) mp[s[i],r[i]] <- mp[s[i],r[i]] + 1
+  i <- which(usp==0)
+  for (s in sample(i,length(i))) {
+    d <- dist(rnorm(xr-xs[s]))
+    r <- sample(Nr,1,prob=exp(d))
+    mp[s,r] <- mp[s,r] + 1
+  }
   # (5) extra assignment of species at random
   n <- round((sum(mr)+sum(mp))*extra)  # extra assignments are proportional to minimal assignments
-  if (n>0) {
-    s <- sample(sample(1:Ns,n,replace=T)) # the selected species (with repetitions)
-    r <- sample(sample(1:Nr,n,replace=T)) # the selected reactions (with repetitions)
-    k <- sample(c(-1,1),n,replace=T) # which side mr (-1) or mp (1)
-    for (i in 1:n)
-      if (k[i]==-1) mr[s[i],r[i]] <- mr[s[i],r[i]] + 1
-      else mp[s[i],r[i]] <- mp[s[i],r[i]] + 1
+  i <- sample(Nr,n,replace=T) # the selected reactions (with repetitions)
+  for (r in i) {
+    w <- sample(0:1)
+    d <- dist(rnorm(xs-xr[r])) - w[1]*pr*usr - w[2]*pp*usp
+    s <- sample(Ns,1,prob=exp(d-max(d)))
+    if (w[1]==1) mr[s,r] <- mr[s,r] + 1
+    else mp[s,r] <- mp[s,r] + 1
   }
   return(list(mr=mr,mp=mp))
 }

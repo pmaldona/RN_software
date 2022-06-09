@@ -259,13 +259,13 @@ sm.display <- function(sm,L=1000,simple=F) {
   }
 }
 
-sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {
+sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1,e=.2) {
   cat(nrow(rn$mr),"species,",ncol(rn$mr),"reactions:\n")
   rn.display(rn)
   o <- rn.linp_org(rn)
   cat("needed inflow",o$ifl,"\n")
   cat("overproducible",o$ovp,"\n")
-  sm <<- sm.maksim(rn,n=n,dt=dt,e=.2)
+  sm <<- sm.maksim(rn,n=n,dt=dt,e=e)
   # sm <<- sm.sim(rn,n=n,dt=dt,t0=0,e=c(.2,.2),w=Inf,momentum=0)
   # sm <<- sm.sim(rn,n=n,dt=dt,t0=0,momentum=0)
   # sm <<- sm.cfsim(rn,n=n,dt=dt)
@@ -276,7 +276,13 @@ sm.example <- function(rn=sm.genrn(12),n=1000,dt=.1) {
   print(floor(log10(pmax(0,sm$s[,ncol(sm$s)]))))
   print(floor(log10(sm$v[,ncol(sm$v)])))
   if (!is.null(rn$sid)) cat("final state:",rn$sid[sm.final(rn,sm)],"\n")
-  else cat("final state:",sm.final(rn,sm),"\n")
+  fs <- sm.final(rn,sm)
+  cat("final species state:", if (length(fs)>0) fs else "void","\n")
+  if (length(fs)>0) {
+    rnf <- rn.sub(rn,fs)
+    cat(nrow(rnf$mr),"species,",ncol(rnf$mr),"reactions:\n")
+    rn.display(rnf)
+  }
   gc()
   g <- sm.display(sm,simple=T)
   print(g)

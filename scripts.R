@@ -33,8 +33,8 @@ scr.test <- function() {
 
 scr.gen <- function(case=1) {
   rn <<- switch(case,
-    rg.g1(Nr=20,Ns=10,extra=.5), # case 1: Nr reactions, Ns species
-    rg.bg(Nr=20,Rs=1:3,Rm=c(1,2),dsf=.2) # case 2: Nr reactions, number of species depends on Rs and dsf
+                rg.g1(Nr=20,Ns=10,extra=.5), # case 1: Nr reactions, Ns species
+                rg.bg(Nr=20,Rs=1:3,Rm=c(1,2),dsf=.2) # case 2: Nr reactions, number of species depends on Rs and dsf
   )
   rn <<- rn.merge(rn) # null or redundant reactions are filtered out, we may end with less reactions and species
   trn <<- rn.trim(rn)  # a more elaborate filtering that eliminates also non reactive and obvious transient species
@@ -42,7 +42,7 @@ scr.gen <- function(case=1) {
 
 # a general script with a more complex generator
 scr.genrn2 <- function(Nr=100,Ns=Nr) {
-
+  
   # (1) reaction patterns to be used:
   mP <- rbind(c(0,0,0,1,1,50),c(0,0,0,1,2,20),c(0,0,0,2,1,20),c(0,0,0,2,2,10))
   # each pattern is a 6-tuple of species numbers in different roles and weight of the pattern
@@ -53,7 +53,7 @@ scr.genrn2 <- function(Nr=100,Ns=Nr) {
   # each species belonging to a pattern will be a different one when the reaction is generated
   
   # (2) number of reactions to be generated: Nr, a parameter defined by default to be 100
-
+  
   # (3) species (names) to be used:
   S <- paste0("s",1:Ns)
   # S = ["s1","s2","s3",... , "s100"]
@@ -111,10 +111,10 @@ scr.genrn3 <- function(Nr=100,Ns=Nr) {
   
   # (4) cardinalities of species:
   C <- 1:3
-
+  
   # (5) pattern generation function:
   P <- function() rg.rsrt(m=mP)
-
+  
   # (6) distribution of species (D$s) and cardinalities (D$c)
   D <- list()
   D$s <- cbind(c(1,1,rep(0,Ns)), c(0,0,(length(S)-2)/(1:(length(S)-2))+(length(S)-2)/5))
@@ -126,16 +126,16 @@ scr.genrn3 <- function(Nr=100,Ns=Nr) {
   
   # (7) generation of a random network using the defined parameters:
   rn <<- rg.rn(Nr=Nr,S=S,C=C,P=P,D=D)
-
+  
   # (8) trimming the generated reaction network:
   trn <<- rn.trim(rn)
-
+  
   return(trn)
 }
 
 # a script to display generated reaction networks (by default it displays the global variable trn)
 scr.rndisp <- function(rn=trn) {
-
+  
   # (1) displaying the number of species and reactions
   cat("number of species:",nrow(rn$mr),"; number of reactions:",ncol(rn$mr),"\n")
   # The names of the species and reactions is rownames(rn$mr) and colnames(rn$mr).
@@ -146,13 +146,13 @@ scr.rndisp <- function(rn=trn) {
   # The reactions will be displayed in the console in Antimony like format.
   # If the parameter file="name_of_file" is defined, then a file is created.
   # Files can be read using rn.read("name_of_file").
-
+  
   # (3) using linear programming to assess the reaction network
   r <- rn.linp_org(rn)
   cat("needed inflow:",rn$sid[r$ifl],"\n")
   cat("overproducible species:",rn$sid[rn.overprod(rn)],"\n")
   # If the needed inflow is void, then n is an organization (but maybe a dynamically unstable one).
-
+  
 }
 
 #-------------------------------------------------------------
@@ -195,7 +195,7 @@ scr.simul <- function(rn=sm.genrn(12),n=1000,dt=.2,e=.2) {
 
 # testing of a reaction network using systematically the void as starting point and perturbations of any size
 scr.evol <- function(rn=scr.genrn(),M=5000,n=1000) {
-
+  
   # (1) calculates the evolutive potential of rn (by default a random generated reaction network)
   # for M random perturbations and n iterations of a mass action kinetics to reach the final state
   e <<- ev.evol(rn=rn,M=M,n=n)
@@ -323,11 +323,11 @@ scr.pcomb.genr <- function(p,rng=1) {
       rn <- rg.rn(Nr=nr,S=paste0("s",1:ns),C=1, P = function() rg.rsrt(patterns))
     }
     else if (rng==2) {
-      rn <- sm.genrn(nr)
+      rn <- rg.g1(Nr=nr,Ns=ns,extra=.2, dist=function(x) -((Ns-1)/2*x/5)^2, pr=log(100), pp=log(100))
+      rn <- rn.merge(rn) # null or redundant reactions are filtered out
     }
     else if (rng==3) {
-      rn <- rg.g1(Nr=nr,Ns=ns,extra=.5)
-      rn <- rn.merge(rn) # null or redundant reactions are filtered out
+      rn <- sm.genrn(nr)
     }
   }
   u <- unique(p$id) # the unique identities of reaction networks to be used
@@ -337,7 +337,7 @@ scr.pcomb.genr <- function(p,rng=1) {
 }
 
 # batch function to create random walks according to parameters in dataframe p
-scr.batch <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,1),name="batch") {
+scr.batch <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,rng=1),name="batch") {
   d <- cbind(id=1:length(rnl),t(sapply(rnl,function(e) c(gnr=ncol(e$mr),gns=nrow(e$mr)))))
   p <- merge(p,as.data.frame(d),by="id")
   for (i in 1:nrow(p)) {
@@ -355,7 +355,7 @@ scr.batch <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,1),name="batch") {
 }
 
 # batch function to create random walks according to parameters in dataframe p
-scr.batch.parallel <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,1),name="batch") {
+scr.batch.parallel <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,rng=1),name="batch") {
   d <- cbind(id=1:length(rnl),t(sapply(rnl,function(e) c(gnr=ncol(e$mr),gns=nrow(e$mr)))))
   p <- merge(p,as.data.frame(d),by="id")
   p_list <- split(p,1:nrow(p))
