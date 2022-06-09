@@ -7,7 +7,7 @@
 # there are no inflow or outflow reactions, redundant or null reactions may be generated (rn.merge will filter them out)
 # dist is a log scaled distribution in the [-1,1] range representing locality
 # pr and pp are a log scaled penalization for the repeated use of species as reactants or products 
-rg.g1 <- function(Nr=12,Ns=Nr,extra=.2, dist=function(x) 1, pr=0, pp=0) {
+rg.g1 <- function(Nr=12,Ns=Nr,extra=.2, dist=function(x) x*0+1, pr=0, pp=pr) {
   # (0) useful variables and functions
   xr <- (0:(Nr-1))/(Nr-1)*2-1  # x coordinates for reactions, range [-1,1]
   xs <- (0:(Ns-1))/(Ns-1)*2-1  # x coordinates for species, range [-1,1]
