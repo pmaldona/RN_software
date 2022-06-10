@@ -375,3 +375,23 @@ scr.batch.parallel <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,rng=1),name="b
   }
   write.csv(p,sprintf("%s.csv",name),row.names=F)
 }
+
+# test the convergence of random generated networks with different generators starting from a full initial state
+# n cases for each generator
+scr.test.full.conv <- function(n=25,g=NULL) {
+  if (is.null(g))
+    g <- list( function() rg.g1(250,250),
+               function() rg.g1(250,250, pr=log(100)),
+               function() rg.g1(250,250, dist=function(x) -(249/2*x/5)^2),
+               function() rg.g1(250,250, dist=function(x) -(249/2*x/5)^2, pr=log(100)) )
+  m <- NULL # cbind(case=numeric(0),species=numeric(0),reactions=numeric(0))
+  for (i in 1:length(g)) for (j in 1:n) {
+    print(c(i,j))
+    rn <- g[[i]]()
+    sm <- sm.maksim(rn,5000,dt=.1,e=.2)
+    fs <- sm.final(rn,sm)
+    fr <- rn.supported(rn,fs)
+    m <- rbind(m,c(case=i,species=length(fs),reactions=length(fr)))
+  }
+  m <<- m
+}

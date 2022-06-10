@@ -222,7 +222,7 @@ sm.conv <- function(sm) {
   return(c(tconv = if (!is.na(k)) sm$t[length(sm$t)-k+1] else 0, ttot = sm$t[length(sm$t)]))
 }
 
-# returns the final closed state of reaction network rn and simulation results sm
+# returns the final closed state (species) of reaction network rn and simulation results sm
 sm.final <- function(rn,sm) {
   v <- sm$v[,ncol(sm$v)]
   s <- rn.support(rn,which(v>0))
