@@ -52,42 +52,39 @@ pert.delta <- function(v,d=1,nmin=5,sigma=.5) {
 }
 
 # creates a structure to study evolutive paths of a reaction network rn
-# result: the reaction network rn, current reaction constants and species concentrations f and s,
-# hf, hs and hc are matrices were each column stores the starting state (f,s) and the concentration convergence (c)
-# for each dynamics simulation applied
+# result: the reaction network rn, a random walk list rw
+# each rw[[i]] contains matrices f, s, p, c, a and r were each column stores
+# the starting state (f,s), the perturbed state p, its convergence (c), its abstraction (a) and used species (u)
+# for each perturbation and simulation step applied
 pert.start <- function(rn=rn.testrn()) {
   s <- rep(0,nrow(rn$mr))
-  f <- pert.randomize(rep(1,ncol(rn$mr)))
-  return(list(rn=rn,f=f,s=s,hf=NULL,hs=NULL,hc=NULL))
+  return(list( rn=rn,species=rownames(rn$mr),reactions=colnames(rn$mr),
+               rw=list(list(f=NULL,s=NULL,p=NULL,c=NULL,a=NULL,u=NULL ))))
 }
 
-# the variable v, "s" (species concentrations, default) or "f" (reaction constants), is perturbed by function op
-# the current state (f,s) is modified according to the perturbation applied
-# several perturbation can be applied sequentially to modify the current state
-pert.apply <- function(e,v="s",op=pert.delta,...){
-  e[[v]] <- op(e[[v]],...)
-  return(e)
+# simulates the dynamics from state s with flow vector f and returns the end result
+# cutoff is the concentration threshold for species to be reactive
+# n is the maximum number of iterations (the simulation can stop before)
+pert.simul <- function(rn,s,f,cutoff=.1,n=5000) {
+  sm <- sm.maksim(rn,n=n,s0=s,p=f,e=cutoff,inflow=F)
+  if (!is.null(ncol(sm$s))) return(sm$s[,ncol(sm$s)])
+  else return(NULL)
 }
 
-# simulates the dynamics from the current state (after applying perturbations) and stores the result in h matrices
-pert.simul <- function(e,cutoff=.1,n=5000) {
-  sm <- sm.maksim(e$rn,n=n,s0=e$s,p=e$f,e=cutoff,inflow=F)
-  e$hf <- cbind(e$hf,e$f)
-  e$hs <- cbind(e$hs,e$s)
-  if (!is.null(ncol(sm$s))) e$s <- sm$s[,ncol(sm$s)]
-  e$s[e$s<cutoff] <- 0
-  e$hc <- cbind(e$hc,e$s)
-  return(e)
+# returns the boolean abstract state (closure) for a given reaction network rn
+# species concentrations vector s and flow constants vector f
+pert.abstract <- function(rn,s,f,cutoff=.1) {
+  k <- rn.closure(rn,which(s>=cutoff),which(f>0))
+  v <- rep(F,length(s))
+  v[k] <- T
+  return(v)
 }
 
-# returns the boolean matrix of abstract states (closure) reached by simulating the dynamics
-pert.abstract <- function(e,cutoff=.1) {
-  if (is.null(e$hc)) return(NULL) # no history yet, NULL result
-  closure <- function(i) {
-    s <- rn.closure(e$rn,which(e$hc[,i]>=cutoff),which(e$hf[,i]>0))
-    v <- rep(F,nrow(e$hc))
-    v[s] <- T
-    return(v)
-  }
-  return(sapply(1:ncol(e$hc),closure))
+# returns the boolean vector of used species for a given reaction network rn
+# species concentrations vector s and flow constants vector f
+pert.used <- function(rn,s,f,cutoff=.1) {
+  k <- rn.used(rn,which(s>=cutoff),which(f>0))
+  v <- rep(F,length(s))
+  v[k] <- T
+  return(v)
 }
