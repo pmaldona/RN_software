@@ -323,7 +323,7 @@ scr.pcomb.genr <- function(p,rng=1) {
       rn <- rg.rn(Nr=nr,S=paste0("s",1:ns),C=1, P = function() rg.rsrt(patterns))
     }
     else if (rng==2) {
-      rn <- rg.g1(Nr=nr,Ns=ns,extra=.2, dist=function(x) -((Ns-1)/2*x/5)^2, pr=log(100), pp=log(100))
+      rn <- rg.g1(Nr=nr,Ns=ns,extra=.4, dist=function(x) -((Ns-1)/2*x/5)^2, pr=log(100), pp=log(100))
       rn <- rn.merge(rn) # null or redundant reactions are filtered out
     }
     else if (rng==3) {
@@ -376,22 +376,68 @@ scr.batch.parallel <- function(p=scr.pcomb(),rnl=scr.pcomb.genr(p,rng=1),name="b
   write.csv(p,sprintf("%s.csv",name),row.names=F)
 }
 
-# test the convergence of random generated networks with different generators starting from a full initial state
-# n cases for each generator
-scr.test.full.conv <- function(n=25,g=NULL) {
+# creates n different reaction networks for each generator in list g
+# returns a list of reaction networks
+scr.rrn.gen <- function(n=25,g=NULL) {
   if (is.null(g))
     g <- list( function() rg.g1(250,250),
                function() rg.g1(250,250, pr=log(100)),
                function() rg.g1(250,250, dist=function(x) -(249/2*x/5)^2),
-               function() rg.g1(250,250, dist=function(x) -(249/2*x/5)^2, pr=log(100)) )
-  m <- NULL # cbind(case=numeric(0),species=numeric(0),reactions=numeric(0))
+               function() rg.g1(250,250, dist=function(x) -(249/2*x/5)^2, pr=log(100)),
+               function() rg.extra1(rg.g1(250,250,extra=0, dist=function(x) -(249/2*x/3)^2, pr=log(100)))
+          )
+  lrn <- list()
   for (i in 1:length(g)) for (j in 1:n) {
-    print(c(i,j))
     rn <- g[[i]]()
-    sm <- sm.maksim(rn,5000,dt=.1,e=.2)
-    fs <- sm.final(rn,sm)
-    fr <- rn.supported(rn,fs)
-    m <- rbind(m,c(case=i,species=length(fs),reactions=length(fr)))
+    lrn <- c(lrn,list(rn))
   }
+  return(lrn)
+}
+
+# test the convergence of random generated networks
+scr.test.full.conv <- function(n=25,lrn=scr.rrn.gen(n),ni=5000,dt=.1,e=.2,a=1) {
+  lrnf <- list()
+  for (i in 1:length(lrn)) {
+    print(i)
+    rn <- lrn[[i]]
+    if (prod(dim(rn$mr))==0)
+      rnf <- rn
+    else {
+      sm <- sm.maksim(rn,ni,dt=dt,e=e,a=a)
+      fs <- sm.final(rn,sm)
+      rnf <- rn.sub(rn,fs)
+    }
+    lrnf <- c(lrnf,list(rnf))
+  }
+  lrn <<- lrn
+  lrnf <<- lrnf
+}
+
+scr.conv.stats <- function(ncase=5,lrn=.GlobalEnv$lrn,lrnf=.GlobalEnv$lrnf) {
+  m <- data.frame(case=floor(0:(length(lrn)-1)/length(lrn)*ncase)+1)
+  m$reactions <- sapply(1:length(lrn),function(i) ncol(lrnf[[i]]$mr))
+  m$species <- sapply(1:length(lrn),function(i) nrow(lrnf[[i]]$mr))
+  m$fragile <- m$species - sapply(1:length(lrn),function(i) length(rn.overprod(lrnf[[i]])))
+  m$order <- 0
+  for (i in unique(m$case)) {
+    k <- which(m$case==i)
+    m$order[k] <- rank(m$species[k],ties.method="random")/(length(k)+1)
+  }
+  m$oprod <- sapply(1:length(lrn),function(i) length(rn.linp_org(lrn[[i]])$ifl))
+  m$foprod <- sapply(1:length(lrn),function(i) if(nrow(lrnf[[i]]$mr)>0) length(rn.linp_org(lrnf[[i]])$ifl) else 0)
+  plot(m$case+m$order-.5,m$species,col=m$case,xlab="case",ylab="species")
   m <<- m
+}
+
+scr.conv.plots <- function(m=.GlobalEnv$m,save=F,n="convstats") {
+  v <- c("species","fragile","oprod","foprod")
+  l <- c( "end state species", "end state fragile species",
+          "start state needed overproduced", "end state needed overproduced" )
+  for (i in 1:length(v)) {
+    g <- ggplot() + geom_point(data=m, aes_string(x="case+(order-.5)*.95",y=v[i],color="factor(case)")) +
+      scale_color_brewer(palette="Spectral",direction=-1) + theme(legend.position="none") +
+      labs(x="case",y=l[i])
+    print(g)
+    if (save) mgg.save(paste0(n,"_",v[i],".png"),g,dim=c(7,3.5),dpi=200)
+  }
 }

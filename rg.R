@@ -3,11 +3,11 @@
 
 # the most simple random network generator, Nr reactions (>1), Ns species (>1)
 # a minimal reaction network is randomly created where each reaction has one reactant and one product and each species
-# is used at least once as reactant and once as product, an extra proportion of assignments are carried out randomly
+# is used at least once as reactant and once as product, extra assignments are carried out randomly over reactions
 # there are no inflow or outflow reactions, redundant or null reactions may be generated (rn.merge will filter them out)
 # dist is a log scaled distribution in the [-1,1] range representing locality
 # pr and pp are a log scaled penalization for the repeated use of species as reactants or products 
-rg.g1 <- function(Nr=12,Ns=Nr,extra=.2, dist=function(x) x*0+1, pr=0, pp=pr) {
+rg.g1 <- function(Nr=12,Ns=Nr,extra=.4, dist=function(x) x*0+1, pr=0, pp=pr) {
   # (0) useful variables and functions
   xr <- (0:(Nr-1))/(Nr-1)*2-1  # x coordinates for reactions, range [-1,1]
   xs <- (0:(Ns-1))/(Ns-1)*2-1  # x coordinates for species, range [-1,1]
@@ -40,13 +40,34 @@ rg.g1 <- function(Nr=12,Ns=Nr,extra=.2, dist=function(x) x*0+1, pr=0, pp=pr) {
     mp[s,r] <- mp[s,r] + 1
   }
   # (5) extra assignment of species at random
-  n <- round((sum(mr)+sum(mp))*extra)  # extra assignments are proportional to minimal assignments
+  n <- round(Nr*extra) # extra assignments are proportional reactions
   i <- sample(Nr,n,replace=T) # the selected reactions (with repetitions)
   for (r in i) {
     w <- sample(0:1)
     d <- dist(rnorm(xs-xr[r])) - w[1]*pr*usr - w[2]*pp*usp
     s <- sample(Ns,1,prob=exp(d-max(d)))
     if (w[1]==1) mr[s,r] <- mr[s,r] + 1
+    else mp[s,r] <- mp[s,r] + 1
+  }
+  return(list(mr=mr,mp=mp))
+}
+
+rg.extra1 <- function(rn,p=.1,m=2,Nse=ceiling(nrow(rn$mr)*p),extra=round(m*Nse),l="x") {
+  mr <- rn$mr; mp <- rn$mp
+  Ns <- nrow(mr); Nr <- ncol(mr)
+  # (1) adding extra species
+  me <- matrix(0,Nse,ncol(mr),dimnames=list(paste0(l,1:Nse)))
+  mr <- rbind(mr,me); mp <- rbind(mp,me)
+  # (2) using extra species once as reactants and once as products
+  for (s in 1:Nse + Ns) {
+    mr[s,sample(Nr,1)] <- 1
+    mp[s,sample(Nr,1)] <- 1
+  }
+  # (3) extra assignment of species at random
+  i <- sample(Nr,extra,replace=T) # the selected reactions (with repetitions)
+  for (r in i) {
+    s <- sample((1:Nse)+Ns,1)
+    if (sample(0:1,1)==1) mr[s,r] <- mr[s,r] + 1
     else mp[s,r] <- mp[s,r] + 1
   }
   return(list(mr=mr,mp=mp))

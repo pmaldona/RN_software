@@ -10,7 +10,7 @@ mgg.plot <- function(...) {
     scale_x_continuous(expand=expansion(mult=c(.02,.02))) +
     scale_y_continuous(expand=expansion(mult=c(.02,.02))) +
     theme_bw() +
-    theme(plot.title = element_text(hjust = 0.5))
+    theme(plot.title = element_text(hjust = 0.5)) # + theme(legend.position="none")
 }
 
 mgg.col <- function(i=1,k=256) {

@@ -107,7 +107,7 @@ rn.read <- function(file) {
 # merges the reactions of one or more reaction networks 
 rn.merge <- function(...) {
   mr <- NULL; mp <- NULL
-  if (...length()>0) for (i in 1:...length()) {
+  if (...length()>1) for (i in 1:...length()) {
     mr1 <- mr; mp1 <- mp; sid1 <- rownames(mr)
     nc1 <- ncol(mr1); if (is.null(nc1)) nc1 <- 0
     mr2 <- ...elt(i)$mr; mp2 <- ...elt(i)$mp; sid2 <- rownames(mr2)
@@ -128,13 +128,14 @@ rn.merge <- function(...) {
       mp[sid2,1:nc2+nc1] <- mp2
     }
   }
+  else { mr <-...elt(1)$mr; mp<- ...elt(1)$mp }
   i <- which(rowSums(mr)+rowSums(mp)==0)
   if (length(i)>0) { mr <- mr[-i,,drop=F]; mp <- mp[-i,,drop=F] }  # unused species are eliminated
   i <- which(sapply(1:ncol(mr), function(k) all(mr[,k]==mp[,k])))
   if (length(i)>0) { mr <- mr[,-i,drop=F]; mp <- mp[,-i,drop=F] }  # null reactions are eliminated
   i <- which(duplicated(mr,MARGIN=2) & duplicated(mp,MARGIN=2))
   if (length(i)>0) { mr <- mr[,-i,drop=F]; mp <- mp[,-i,drop=F] }  # duplicated reactions are eliminated
-  if (ncol(mr)>0) {
+  if (...length()>1 && ncol(mr)>0) {
     colnames(mr) <- colnames(mp) <- paste0("r",1:ncol(mr))
   }
   return(list(mr=mr,mp=mp))
@@ -169,15 +170,17 @@ rn.support <- function(rn,r=1:ncol(rn$mr)) return(which(rowSums(rn$mr[,r,drop=F]
 rn.supported <- function(rn,s=1:nrow(rn$mr)) return(which(colSums(rn$mr[s,,drop=F]>0)==colSums(rn$mr>0)))
 
 # returns a sub-network of a reaction network nr by species s (defaults to all), unreactive species are trimmed
-rn.sub <- function(rn,s=1:nrow(rn$mr)) {
+# supported or partially supported reactions are selected
+rn.sub <- function(rn,s=1:nrow(rn$mr),partial=F) {
   m <- rn$mr + rn$mp # matrix of species used by reactions
-  rs <- which(colSums(m)==colSums(m[s,,drop=F])) # reactions supported by the selected species
+  if (partial) rs <- which(colSums(m[s,,drop=F])>0) # reactions partially supported by the selected species
+  else rs <- which(colSums(m)==colSums(m[s,,drop=F])) # reactions supported by the selected species
   sr <- which(rowSums(m[,rs,drop=F])>0) # species used in the selected reactions
   srn <- list()
   if (!is.null(rn$sid)) srn$sid <- rn$sid[sr]
   if (!is.null(rn$w)) srn$w <- rn$w[sr]
-  srn$mr <- rn$mr[sr,rs]
-  srn$mp <- rn$mp[sr,rs]
+  srn$mr <- rn$mr[sr,rs,drop=F]
+  srn$mp <- rn$mp[sr,rs,drop=F]
   return(srn)
 }
 
@@ -337,6 +340,7 @@ rn.linp_org <- function(rn,w=NULL,inflow=NULL,destruct=F) {
 # returns a list of overproducible species (index set)
 rn.overprod <- function(rn,s=1:nrow(rn$mr),inflow=integer(0)) {
   Ns <- nrow(rn$mr)  # number of species (rows)
+  if (Ns==0) return(integer(0))
   Nr <- ncol(rn$mr)  # number of reactions (columns)
   S <- cbind(-diag(Ns),diag(Ns)[,inflow],rn$mp-rn$mr) # stoichiometric matrix of rn with prepended reactions
   # of destruction of every species and optional creation of extra inflow species
